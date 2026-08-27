@@ -4,8 +4,8 @@
 
 .wk-backbar.wk-backbar {
   background: #fff;
-  border-bottom: 1px solid #e8eef4;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  border-bottom: 1px solid var(--wkn-ink-150);
+  font-family: var(--font-sans);
 }
 
 .wk-backbar-inner.wk-backbar-inner {
@@ -24,10 +24,10 @@
   gap: 6px;
   flex-shrink: 0;
   padding: 6px 12px 6px 8px;
-  border: 1px solid #dde7ef;
+  border: 1px solid var(--wkn-ink-200);
   border-radius: 999px;
   background: #fff;
-  color: #004bbe;
+  color: var(--wkn-blue-700);
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
@@ -35,8 +35,8 @@
 }
 
 .wk-backbar .wk-back:hover {
-  background: #eef5ff;
-  border-color: #bfd0dc;
+  background: var(--wkn-blue-100);
+  border-color: var(--wkn-ink-300);
 }
 
 .wk-backbar .wk-back svg {
@@ -63,7 +63,7 @@
 }
 
 .wk-backbar .wk-crumbs a {
-  color: #4a6078;
+  color: var(--wkn-ink-600);
   font-size: 12.5px;
   font-weight: 500;
   text-decoration: none;
@@ -71,12 +71,12 @@
 }
 
 .wk-backbar .wk-crumbs a:hover {
-  color: #004bbe;
+  color: var(--wkn-blue-700);
   text-decoration: underline;
 }
 
 .wk-backbar .wk-crumbs span[aria-current='page'] {
-  color: #0d1520;
+  color: var(--wkn-ink-900);
   font-weight: 600;
 }
 
@@ -88,7 +88,7 @@
 }
 
 .wk-backbar .wk-crumb-sep {
-  color: #bfd0dc;
+  color: var(--wkn-ink-300);
 }
 
 @media (max-width: 640px) {

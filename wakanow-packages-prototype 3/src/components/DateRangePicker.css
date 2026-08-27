@@ -24,8 +24,8 @@
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 20px 60px rgba(0, 20, 51, 0.22);
-  font-family: 'DM Sans', system-ui, sans-serif;
-  color: #0d1520;
+  font-family: var(--font-sans);
+  color: var(--wkn-ink-900);
   cursor: default;
   text-align: left;
 }
@@ -45,10 +45,10 @@
   flex: 1;
   display: flex;
   justify-content: space-around;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 700;
-  color: #0d1520;
+  color: var(--wkn-ink-900);
 }
 
 /* The month captions live in the header on wide layouts and inside each grid
@@ -61,16 +61,16 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border: 1px solid #bfd0dc;
+  border: 1px solid var(--wkn-ink-300);
   border-radius: 50%;
   background: #fff;
-  color: #004bbe;
+  color: var(--wkn-blue-700);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
 }
 
-.wk-dp-pop .wk-dp-nav:hover:not(:disabled) { background: #eef5ff; }
+.wk-dp-pop .wk-dp-nav:hover:not(:disabled) { background: var(--wkn-blue-100); }
 .wk-dp-pop .wk-dp-nav:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .wk-dp-pop .wk-dp-grids {
@@ -95,7 +95,7 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.6px;
-  color: #6b8096;
+  color: var(--wkn-ink-500);
 }
 
 .wk-dp-pop .wk-dp-days { gap: 1px 0; }
@@ -108,33 +108,33 @@
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 500;
-  color: #0d1520;
+  color: var(--wkn-ink-900);
   cursor: pointer;
   font-variant-numeric: tabular-nums;
 }
 
 .wk-dp-pop .wk-dp-day:hover:not(:disabled) {
-  background: #eef5ff;
+  background: var(--wkn-blue-100);
   border-radius: 8px;
 }
 
 .wk-dp-pop .wk-dp-out { visibility: hidden; }
 
 .wk-dp-pop .wk-dp-past {
-  color: #c3d0da;
+  color: var(--wkn-ink-300);
   cursor: not-allowed;
 }
 
 /* The in-range fill is square so consecutive days read as one bar; only the
    two ends are rounded. */
 .wk-dp-pop .wk-dp-in {
-  background: #eef5ff;
-  color: #003d9c;
+  background: var(--wkn-blue-100);
+  color: var(--wkn-blue-800);
 }
 
 .wk-dp-pop .wk-dp-sel,
 .wk-dp-pop .wk-dp-sel:hover:not(:disabled) {
-  background: #004bbe;
+  background: var(--wkn-blue-700);
   color: #fff;
   font-weight: 700;
   border-radius: 8px;
@@ -146,12 +146,12 @@
   gap: 12px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid #ebf0f5;
+  border-top: 1px solid var(--wkn-ink-150);
 }
 
 .wk-dp-pop .wk-dp-hint {
   font-size: 12px;
-  color: #4a6078;
+  color: var(--wkn-ink-600);
   font-weight: 500;
 }
 
@@ -160,7 +160,7 @@
   padding: 8px 18px;
   border: none;
   border-radius: 8px;
-  background: #004bbe;
+  background: var(--wkn-blue-700);
   color: #fff;
   font-family: inherit;
   font-size: 12.5px;
@@ -168,7 +168,7 @@
   cursor: pointer;
 }
 
-.wk-dp-pop .wk-dp-done:hover { background: #003d9c; }
+.wk-dp-pop .wk-dp-done:hover { background: var(--wkn-blue-800); }
 
 @media (max-width: 720px) {
   .wk-dp-pop .wk-dp-grid-2,
