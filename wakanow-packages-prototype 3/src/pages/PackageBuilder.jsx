@@ -3,7 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import BackBar from '../components/BackBar.jsx';
 import DateRangePicker from '../components/DateRangePicker.jsx';
+import FlightCard from '../components/FlightCard.jsx';
+import FlightSort from '../components/FlightSort.jsx';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
+import { flightCard, sortFlights, sortSummary } from '../lib/flights.js';
 import { delta, naira, nairaShort } from '../lib/format.js';
 import { flightsForLeg, priceItinerary, visaLegs } from '../lib/itinerary.js';
 import { findFare, findRoom } from '../lib/pricing.js';
@@ -106,15 +109,6 @@ function hotelFeats(entry, hotel) {
   ];
 }
 
-function flightFeats(flight) {
-  const fare = findFare(flight);
-  return [
-    fare?.bags ?? '1 checked bag',
-    fare?.cabin ?? 'Economy',
-    flight.eligible === false ? 'Not in the bundle' : 'Bundle eligible',
-  ];
-}
-
 /** The stylesheet selects the mockup's clickable cards by tag (`.opt`, `.topt`,
  *  `.stp`, `.mo`), so they keep those elements and pick up button/radio
  *  semantics from props rather than becoming <button>s. */
@@ -189,6 +183,7 @@ export default function PackageBuilder() {
   const [stepKey, setStepKey] = useState(`${itinerary[0].id}-hotel`);
   const [completed, setCompleted] = useState(() => new Set());
   const [selections, setSelections] = useState(() => reconcileSelections(itinerary, {}));
+  const [flightSort, setFlightSort] = useState('cheapest');
   const [visaModalLeg, setVisaModalLeg] = useState(null);
   const [visaReason, setVisaReason] = useState(null);
 
@@ -236,6 +231,22 @@ export default function PackageBuilder() {
   const flight = legPriced?.priced.flight;
   const fare = legPriced?.priced.fare;
   const lineOf = (lp, key) => lp.priced.lines.find((l) => l.key === key);
+
+  /* The results-card shape for this leg's flights. A leg that is not the whole
+     trip is a one-way hop, so it gets no return timeline — the journey home is
+     priced once, at the end. */
+  const flightCards = (legPriced?.flightOptions ?? []).map((item) => ({
+    item,
+    card: flightCard(item, { oneWay: !entry?.isOnly }),
+  }));
+  const flightSummary = sortSummary(flightCards.map((f) => f.card));
+  const sortedOrder = sortFlights(
+    flightCards.map((f) => f.card),
+    flightSort,
+  );
+  const sortedFlights = sortedOrder.map((card) =>
+    flightCards.find((f) => f.card.id === card.id),
+  );
 
   const total = priced.bundled;
 
@@ -710,25 +721,31 @@ export default function PackageBuilder() {
                   )}
                 </p>
 
+                {/* Mirrors wakanow.com's flight results: a summary rail that
+                    doubles as the sort, then a card per flight carrying the
+                    three ways to pay, both timelines and the baggage. */}
+                <FlightSort
+                  value={flightSort}
+                  onChange={setFlightSort}
+                  summary={flightSummary}
+                  count={legPriced.flightOptions.length}
+                />
+
                 <div role="radiogroup" aria-label="Flight">
-                  {legPriced.flightOptions.map((item, i) => (
-                    <Fragment key={item.id}>
-                      <OptionCard
-                        item={item}
-                        img={IMG[i % IMG.length]}
-                        feats={flightFeats(item)}
-                        price={item.price}
-                        selected={item.id === flight.id}
-                        selectedPrice={flight.price}
-                        note={
-                          item.eligible === false
-                            ? 'not in the bundle'
-                            : `${naira(item.separate)} separately`
-                        }
-                        onSelect={() => selectFlight(item.id)}
-                      />
+                  {sortedFlights.map(({ item, card }) => (
+                    <FlightCard
+                      key={item.id}
+                      card={card}
+                      selected={item.id === flight.id}
+                      onSelect={() => selectFlight(item.id)}
+                      priceNote={
+                        item.eligible === false
+                          ? 'Not in the bundle'
+                          : `${naira(item.separate)} booked separately`
+                      }
+                    >
                       {item.id === flight.id && (
-                        <>
+                        <div className="fareladder">
                           <p className="stnote">Cabin and fare</p>
                           <div role="radiogroup" aria-label="Cabin and fare">
                             {item.fares.map((f) => {
@@ -762,9 +779,9 @@ export default function PackageBuilder() {
                               );
                             })}
                           </div>
-                        </>
+                        </div>
                       )}
-                    </Fragment>
+                    </FlightCard>
                   ))}
                 </div>
 
