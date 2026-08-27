@@ -8,6 +8,7 @@ import { addDays, formatRange } from '../lib/dates.js';
 import { naira, nairaShort } from '../lib/format.js';
 import { cardPrice } from '../lib/pricing.js';
 import { useTrip } from '../state/useTrip.js';
+import TripLegs from '../components/TripLegs.jsx';
 
 const COMPONENTS = [
   { key: 'flight', icon: '✈', label: 'Flight' },
@@ -206,7 +207,7 @@ export default function LandingPage() {
             </div>
 
             <div className="addDestRow">
-              <button className="multidest">+ Add another destination</button>
+              <TripLegs />
             </div>
 
             <div className={paxOpen ? 'pop open' : 'pop'} ref={paxPopRef}>

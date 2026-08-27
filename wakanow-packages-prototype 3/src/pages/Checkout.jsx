@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import BackBar from '../components/BackBar.jsx';
 import { TIERS, findPackage, isTier } from '../data/packages.js';
-import { formatWeekday } from '../lib/dates.js';
+import { formatRange, formatWeekday } from '../lib/dates.js';
 import { naira, nairaShort } from '../lib/format.js';
+import { priceItinerary, visaLegs } from '../lib/itinerary.js';
 import { cardPrice, findFare, findRoom, pricePackage } from '../lib/pricing.js';
 import { useTrip } from '../state/useTrip.js';
 import './Checkout.css';
@@ -101,15 +102,114 @@ function Toggle({ on, label, onToggle }) {
   );
 }
 
+/** The amber visa card. One destination shows one; a multi-city trip shows one
+ *  per country that needs a visa, which is why it is a component and not inline
+ *  markup — the copy and the price are the destination's own. */
+function VisaCard({ heading, city, country, nationality, addon, on, onToggle }) {
+  return (
+    <div className="card" style={{ border: '2px solid #C77C00', background: '#FFFCF5' }}>
+      <div className="cardhead">
+        <h2>
+          <span className="stepnum" style={{ background: '#C77C00' }}>
+            !
+          </span>
+          {heading}
+          <span className="new">New</span>
+        </h2>
+      </div>
+      <div
+        style={{
+          background: '#FEF8ED',
+          border: '1px solid rgba(199,124,0,.25)',
+          borderRadius: 'var(--r)',
+          padding: '12px 14px',
+          marginBottom: '14px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '13px',
+            fontWeight: 700,
+            color: '#C77C00',
+            marginBottom: '4px',
+          }}
+        >
+          You need a visa for {city} on a {nationality} passport
+        </div>
+        <div style={{ fontSize: '12px', color: '#7A5300', lineHeight: '18px' }}>
+          Wakanow can apply for you. Turn it on below and we'll collect your documents by email
+          after payment. If you already hold a valid {country} visa, leave it off — we will not add
+          it to your price.
+        </div>
+      </div>
+      <div className="addon" style={{ borderBottom: 'none', paddingBottom: 0 }}>
+        <Toggle on={on} label={`${addon.title} · ${city}`} onToggle={onToggle} />
+        <div>
+          <h4>{addon.title}</h4>
+          <div
+            style={{
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+              marginTop: '2px',
+              lineHeight: '15px',
+            }}
+          >
+            {addon.meta} · documents collected after payment · priced per traveller
+          </div>
+        </div>
+        <div className="price">
+          <b>{naira(addon.price)}</b>
+          <s>{naira(addon.separate)} separately</s>
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: '10px',
+          color: '#7A5300',
+          marginTop: '10px',
+          paddingTop: '10px',
+          borderTop: '1px solid rgba(199,124,0,.15)',
+          lineHeight: '15px',
+        }}
+      >
+        ⚠ Documents must be submitted within 5 working days of booking. If you do not submit in
+        time, Wakanow will contact you before your visa application expires.
+      </div>
+    </div>
+  );
+}
+
 export default function Checkout() {
   const navigate = useNavigate();
-  const { search, nights, dateLabel, setTier, bookingSlug, setBookingSlug, payingTravellers } =
-    useTrip();
+  const {
+    search,
+    nights,
+    dateLabel,
+    setTier,
+    bookingSlug,
+    setBookingSlug,
+    payingTravellers,
+    itinerary,
+    isMultiDestination,
+    routeLabel,
+    totalNights,
+    tripStartDate,
+    tripEndDate,
+  } = useTrip();
+
+  // One destination is still a booked package and behaves exactly as it always
+  // has. Two or more is an itinerary: the trip is priced leg by leg, and every
+  // destination-shaped thing on this screen — the summary, the breakdown, the
+  // visa card, the rail — is rendered once per leg instead of once.
+  const trip = isMultiDestination ? priceItinerary(itinerary, {}, search) : null;
 
   // The booking drives the screen, not the tier: a curated package taken to
   // checkout must describe itself, not the Dubai tier that used to stand in.
   const selected = findPackage(bookingSlug);
-  const bookedTier = isTier(selected);
+  /** A tier is a one-city product, so a multi-city trip is never booking one. */
+  const bookedTier = !isMultiDestination && isTier(selected);
+  /** What the add-on card speaks for: the booked package, or the first stop. */
+  const primaryPkg = isMultiDestination ? itinerary[0].pkg : selected;
   const hotel = selected.hotels[0];
   const flight = selected.flights[0];
   // Checkout books the package exactly as authored: the default room and the
@@ -118,18 +218,31 @@ export default function Checkout() {
   const room = findRoom(hotel);
   const fare = findFare(flight);
   /** A package that already includes transfers cannot also sell one as an add-on. */
-  const offersTransferAddon = !selected.transfer;
+  const offersTransferAddon = !primaryPkg.transfer;
   /** Destinations come off the package; only the origin is the traveller's own. */
-  const destCode = selected.code;
+  const destCode = isMultiDestination ? itinerary[0].toCode : selected.code;
   // A package that carries no visa add-on either needs none or already includes
-  // one, so the whole visa card and its line drop out.
-  const visaAddon = selected.addons?.find((a) => a.id === 'visa') ?? null;
+  // one, so the whole visa card and its line drop out. On a multi-city trip the
+  // visa is per country instead, so the single card gives way to `visaCards`.
+  const visaAddon = isMultiDestination
+    ? null
+    : (selected.addons?.find((a) => a.id === 'visa') ?? null);
+  /** One card per destination that needs a visa, each at its own price. */
+  const visaCards = isMultiDestination
+    ? visaLegs(itinerary)
+        .map((entry) => ({ entry, addon: entry.pkg.addons?.find((a) => a.id === 'visa') }))
+        .filter((card) => card.addon)
+    : [];
   // The featured tour slot: the tiers keep the authored desert safari, a curated
   // destination offers its own headline excursion instead.
   const tourAddon = bookedTier
     ? null
-    : (selected.addons?.find((a) => a.id !== 'visa' && a.id !== 'transfer') ?? null);
+    : (primaryPkg.addons?.find((a) => a.id !== 'visa' && a.id !== 'transfer') ?? null);
   const tourRow = bookedTier ? AUTHORED_TOUR : tourAddon;
+  /** With several destinations in play, a tour has to say which city it is in. */
+  const tourLabel =
+    tourAddon &&
+    (isMultiDestination ? `${tourAddon.title} · ${itinerary[0].toCity}` : tourAddon.title);
 
   const [email, setEmail] = useState('adaeze.okonkwo@gmail.com');
   const [phone, setPhone] = useState('+234 803 412 6690');
@@ -149,6 +262,9 @@ export default function Checkout() {
   );
 
   const [addons, setAddons] = useState(INITIAL_ADDONS);
+  /** Multi-city visas, one switch per leg id. Off to begin with, like the single
+   *  visa toggle — nobody is charged for a visa they did not ask for. */
+  const [legVisas, setLegVisas] = useState({});
   const [channel, setChannel] = useState('whatsapp');
   const [pssSelected, setPssSelected] = useState(false);
   const [handedOff, setHandedOff] = useState(false);
@@ -176,18 +292,99 @@ export default function Checkout() {
   const priced = pricePackage(selected, { nights });
   const { now: packageNow, save: packageSave } = cardPrice(selected, nights);
 
-  const base = packageNow * payingTravellers;
-  const packageSavings = packageSave * payingTravellers;
+  const base = (isMultiDestination ? trip.bundled : packageNow) * payingTravellers;
+
+  /** The party-sized label the mockup wrote on every component line. */
+  const withParty = (label) =>
+    payingTravellers > 1 ? `${label} × ${plural(payingTravellers, 'traveller')}` : label;
+
+  const legLines = (entry, legPriced) =>
+    legPriced.lines.map((line) => ({
+      key: `${entry.id}:${line.key}`,
+      label: withParty(line.label),
+      amount: line.separate * payingTravellers,
+    }));
+
+  // Each component is listed at what it would cost booked separately, so the
+  // package savings line below reconciles the list back to the package price:
+  // Σ separate − save === bundled, per traveller. A multi-city trip keeps the
+  // same identity, one group per destination plus the flight home.
+  const componentGroups = isMultiDestination
+    ? [
+        ...trip.legPrices.map(({ entry, priced: legPriced }) => ({
+          key: entry.id,
+          title: `${entry.toCity} · ${plural(entry.nights, 'night')}`,
+          strong: true,
+          lines: legLines(entry, legPriced),
+        })),
+        ...(trip.home
+          ? [
+              {
+                key: 'home',
+                title: null,
+                strong: false,
+                lines: [
+                  {
+                    key: 'home',
+                    label: withParty(trip.home.label),
+                    amount: trip.home.separate * payingTravellers,
+                  },
+                ],
+              },
+            ]
+          : []),
+      ]
+    : [
+        {
+          key: selected.slug,
+          title: `${selected.name} · ${search.fromCode} → ${destCode}`,
+          strong: false,
+          lines: priced.lines.map((line) => ({
+            key: line.key,
+            label: withParty(line.label),
+            amount: line.separate * payingTravellers,
+          })),
+        },
+      ];
+
+  const componentTotal = componentGroups.reduce(
+    (sum, group) => sum + group.lines.reduce((legSum, line) => legSum + line.amount, 0),
+    0,
+  );
+  // Taken as the difference rather than assumed, so the listed components always
+  // reconcile to the package price however many legs are being added up.
+  const packageSavings = isMultiDestination
+    ? componentTotal - base
+    : packageSave * payingTravellers;
 
   // The visa and tour lines take the booked package's own figures rather than
   // hardcoded UAE ones; for the three Dubai tiers those are the same numbers.
   const dynamicItems = {
     visa: visaAddon && { label: visaAddon.title, price: visaAddon.price },
-    safari: tourAddon && { label: tourAddon.title, price: tourAddon.price },
+    safari: tourAddon && { label: tourLabel, price: tourAddon.price },
   };
   const optionalItems = OPTIONAL_ITEMS.map((item) =>
     dynamicItems[item.key] ? { ...item, ...dynamicItems[item.key] } : item,
   );
+
+  // A visa is bought per country, so across several destinations the one visa
+  // row becomes one row per destination that needs one.
+  const catalogueItems = isMultiDestination
+    ? [
+        ...optionalItems.filter((item) => item.key !== 'visa'),
+        ...visaCards.map(({ entry, addon }) => ({
+          key: `visa:${entry.id}`,
+          legId: entry.id,
+          label: `${addon.title} · ${entry.toCity}`,
+          price: addon.price,
+          isNew: true,
+          group: 'package',
+          perTraveller: true,
+        })),
+      ]
+    : optionalItems;
+
+  const isEnabled = (item) => (item.legId ? Boolean(legVisas[item.legId]) : addons[item.key]);
 
   const offered = (key) => {
     if (key === 'transfer') return offersTransferAddon;
@@ -196,7 +393,7 @@ export default function Checkout() {
     return true;
   };
 
-  const activeExtras = optionalItems.filter((item) => addons[item.key] && offered(item.key));
+  const activeExtras = catalogueItems.filter((item) => isEnabled(item) && offered(item.key));
   const total = activeExtras.reduce((sum, item) => sum + extraAmount(item, payingTravellers), base);
 
   // A promo never takes the bill below zero, so a flat code on a small basket
@@ -204,20 +401,12 @@ export default function Checkout() {
   const promoDiscount = promo ? Math.min(PROMOS[promo].amount(base), total) : 0;
   const dueTotal = total - promoDiscount;
 
-  // Each component is listed at what it would cost booked separately, so the
-  // package savings line below reconciles the list back to the package price:
-  // Σ separate − save === bundled, per traveller.
-  const componentLines = priced.lines.map((line) => ({
-    key: line.key,
-    label:
-      payingTravellers > 1 ? `${line.label} × ${plural(payingTravellers, 'traveller')}` : line.label,
-    amount: line.separate * payingTravellers,
-  }));
-
   const updateTraveller = (index, field, value) =>
     setTravellers((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
 
   const toggleAddon = (key) => setAddons((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const toggleLegVisa = (legId) => setLegVisas((prev) => ({ ...prev, [legId]: !prev[legId] }));
 
   const applyPromo = () => {
     const code = promoInput.trim().toUpperCase();
@@ -239,12 +428,16 @@ export default function Checkout() {
 
   const inert = (e) => e.preventDefault();
 
+  /** The trip in one line: the whole route on a multi-city trip, the booked
+   *  package on a single-destination one. */
+  const shareSummary = isMultiDestination
+    ? `${routeLabel} · ${plural(totalNights, 'night')} · ${formatRange(tripStartDate, tripEndDate)}`
+    : `${selected.name} · ${selected.city} · ${dateLabel}`;
+
   const shareOnWhatsApp = () =>
     window.open(
       'https://wa.me/?text=' +
-        encodeURIComponent(
-          `My Wakanow booking — ${selected.name} · ${selected.city} · ${dateLabel} — ${naira(dueTotal)}`,
-        ),
+        encodeURIComponent(`My Wakanow booking — ${shareSummary} — ${naira(dueTotal)}`),
       '_blank',
       'noopener',
     );
@@ -292,12 +485,39 @@ export default function Checkout() {
       <div className="wrap">
         <div className="pagetitle">
           <h1>Your Booking</h1>
+          {isMultiDestination && (
+            <div className="summeta">
+              {routeLabel} · {plural(totalNights, 'night')} ·{' '}
+              {formatRange(tripStartDate, tripEndDate)}
+            </div>
+          )}
         </div>
 
         <div className="layout">
           <div className="tierside">
-            <div className="tierside-head">{bookedTier ? 'Your search options' : 'Your trip'}</div>
-            {bookedTier ? (
+            <div className="tierside-head">
+              {isMultiDestination
+                ? 'Your itinerary'
+                : bookedTier
+                  ? 'Your search options'
+                  : 'Your trip'}
+            </div>
+            {isMultiDestination ? (
+              // Tiers are a one-city product. A multi-city trip has legs to show
+              // instead, so the rail lists the stops rather than offering a swap.
+              trip.legPrices.map(({ entry, priced: legPriced }) => (
+                <div className="tmini" key={entry.id}>
+                  <div className="tn">{entry.toCity}</div>
+                  <div className="tp">
+                    <b>{naira(legPriced.bundled)}</b>
+                    {legPriced.save > 0 && <small>Save {nairaShort(legPriced.save)}</small>}
+                  </div>
+                  <button type="button" className="go">
+                    {plural(entry.nights, 'night')}
+                  </button>
+                </div>
+              ))
+            ) : bookedTier ? (
               TIERS.map((t) => {
                 const isSelected = t.slug === selected.slug;
                 const modifier = TIER_MODIFIER[t.name];
@@ -535,12 +755,12 @@ export default function Checkout() {
                 <div className="addon">
                   <Toggle
                     on={addons.safari}
-                    label={tourRow.title}
+                    label={tourLabel ?? tourRow.title}
                     onToggle={() => toggleAddon('safari')}
                   />
                   <div>
                     <h4>
-                      {tourRow.title}
+                      {tourLabel ?? tourRow.title}
                       <span className="new">New</span>
                     </h4>
                     <p>{tourRow.meta}</p>
@@ -602,75 +822,31 @@ export default function Checkout() {
             </div>
 
             {visaAddon && (
-            <div className="card" style={{ border: '2px solid #C77C00', background: '#FFFCF5' }}>
-              <div className="cardhead">
-                <h2>
-                  <span className="stepnum" style={{ background: '#C77C00' }}>
-                    !
-                  </span>
-                  Visa Requirement<span className="new">New</span>
-                </h2>
-              </div>
-              <div
-                style={{
-                  background: '#FEF8ED',
-                  border: '1px solid rgba(199,124,0,.25)',
-                  borderRadius: 'var(--r)',
-                  padding: '12px 14px',
-                  marginBottom: '14px',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    color: '#C77C00',
-                    marginBottom: '4px',
-                  }}
-                >
-                  You need a visa for {selected.city} on a {search.nationality} passport
-                </div>
-                <div style={{ fontSize: '12px', color: '#7A5300', lineHeight: '18px' }}>
-                  Wakanow can apply for you. Turn it on below and we'll collect your documents by
-                  email after payment. If you already hold a valid {selected.country} visa, leave it
-                  off — we will not add it to your price.
-                </div>
-              </div>
-              <div className="addon" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-                <Toggle on={addons.visa} label={visaAddon.title} onToggle={() => toggleAddon('visa')} />
-                <div>
-                  <h4>{visaAddon.title}</h4>
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--text-muted)',
-                      marginTop: '2px',
-                      lineHeight: '15px',
-                    }}
-                  >
-                    {visaAddon.meta} · documents collected after payment · priced per traveller
-                  </div>
-                </div>
-                <div className="price">
-                  <b>{naira(visaAddon.price)}</b>
-                  <s>{naira(visaAddon.separate)} separately</s>
-                </div>
-              </div>
-              <div
-                style={{
-                  fontSize: '10px',
-                  color: '#7A5300',
-                  marginTop: '10px',
-                  paddingTop: '10px',
-                  borderTop: '1px solid rgba(199,124,0,.15)',
-                  lineHeight: '15px',
-                }}
-              >
-                ⚠ Documents must be submitted within 5 working days of booking. If you do not submit
-                in time, Wakanow will contact you before your visa application expires.
-              </div>
-            </div>
+              <VisaCard
+                heading="Visa Requirement"
+                city={selected.city}
+                country={selected.country}
+                nationality={search.nationality}
+                addon={visaAddon}
+                on={addons.visa}
+                onToggle={() => toggleAddon('visa')}
+              />
             )}
+
+            {/* One card per country on the trip that needs a visa — each is its
+                own application, at its own destination's price. */}
+            {visaCards.map(({ entry, addon }) => (
+              <VisaCard
+                key={entry.id}
+                heading={`Visa Requirement · ${entry.toCity}`}
+                city={entry.toCity}
+                country={entry.country}
+                nationality={search.nationality}
+                addon={addon}
+                on={Boolean(legVisas[entry.id])}
+                onToggle={() => toggleLegVisa(entry.id)}
+              />
+            ))}
 
             <div className="card">
               <div className="cardhead">
@@ -763,64 +939,121 @@ export default function Checkout() {
               </div>
 
               <div className="sumbody">
-                <div className="sumgroup">
-                  <h3>
-                    <span className="ic">🏨</span> Hotel
-                  </h3>
-                  <div className="summeta">
-                    {hotel.name} · {plural(nights, 'night')}
-                  </div>
-                  <div className="summeta">
-                    {room.name} · {room.board} · {room.beds}
-                  </div>
-                  <div className="summeta">
-                    Check-in {formatWeekday(search.departDate)} · Check-out{' '}
-                    {formatWeekday(search.returnDate)}
-                  </div>
-                  <div className="sumprice">{naira(room.nightly * nights)}</div>
-                </div>
+                {isMultiDestination ? (
+                  <>
+                    {/* One group per destination: its hotel, its flight in, and
+                        its transfer where the package carries one. */}
+                    {trip.legPrices.map(({ entry, priced: legPriced }) => {
+                      const lineOf = (key) => legPriced.lines.find((l) => l.key === key);
+                      const transferLine = lineOf('transfer');
+                      return (
+                        <div className="sumgroup" key={entry.id}>
+                          <h3>
+                            <span className="ic">🌍</span> {entry.toCity} ·{' '}
+                            {plural(entry.nights, 'night')}
+                          </h3>
+                          <div className="summeta">🏨 {legPriced.hotel.name}</div>
+                          <div className="summeta">
+                            {legPriced.room.name} · {legPriced.room.board} · {legPriced.room.beds}
+                          </div>
+                          <div className="summeta">
+                            Check-in {formatWeekday(entry.startDate)} · Check-out{' '}
+                            {formatWeekday(entry.endDate)}
+                          </div>
+                          <div className="sumprice">{naira(lineOf('hotel').bundled)}</div>
 
-                <div className="sumgroup">
-                  <h3>
-                    <span className="ic">✈</span> Flight
-                  </h3>
-                  <div className="summeta">
-                    {search.fromCode} → {destCode} · {flight.name} · {fare.label}
-                  </div>
-                  {/* Clock times stay as authored — the tiers carry fares, not a timetable. */}
-                  <div className="leg">
-                    <div>
-                      <span className="time">14:45</span>
-                      <br />
-                      <span className="code">{search.fromCode}</span>
-                    </div>
-                    <div>
-                      <span className="dur">14h 45m · 1 stop</span>
-                    </div>
-                    <div>
-                      <span className="time">08:30</span>
-                      <br />
-                      <span className="code">{destCode}</span>
-                    </div>
-                  </div>
-                  {/* What the cabin actually includes, rather than the flight's
-                      authored baggage string — the fare is what was bought. */}
-                  <div className="summeta" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                    {fare.bags} · {fare.seat} · {fare.changeable || 'No changes'} ·{' '}
-                    {fare.refundable || 'Non-refundable'}
-                  </div>
-                  <div className="sumprice">{naira(fare.price)}</div>
-                </div>
+                          <div className="summeta" style={{ marginTop: '10px' }}>
+                            ✈ {entry.fromCity} → {entry.toCity} ·{' '}
+                            {legPriced.flight.name.split(' · ')[0]} · {legPriced.fare.label}
+                          </div>
+                          <div className="sumprice">{naira(lineOf('flight').bundled)}</div>
 
-                {selected.transfer && (
-                  <div className="sumgroup">
-                    <h3>
-                      <span className="ic">🚐</span> Airport transfer
-                      <span className="new">New</span>
-                    </h3>
-                    <div className="summeta">{selected.transfer.name}</div>
-                    <div className="sumprice">{naira(selected.transfer.price)}</div>
-                  </div>
+                          {transferLine && (
+                            <>
+                              <div className="summeta" style={{ marginTop: '10px' }}>
+                                🚐 {entry.pkg.transfer.name}
+                              </div>
+                              <div className="sumprice">{naira(transferLine.bundled)}</div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {trip.home && (
+                      <div className="sumgroup">
+                        <h3>
+                          <span className="ic">✈</span> {trip.home.label}
+                        </h3>
+                        <div className="summeta">
+                          {trip.home.route} · {trip.home.airline}
+                        </div>
+                        <div className="sumprice">{naira(trip.home.bundled)}</div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="sumgroup">
+                      <h3>
+                        <span className="ic">🏨</span> Hotel
+                      </h3>
+                      <div className="summeta">
+                        {hotel.name} · {plural(nights, 'night')}
+                      </div>
+                      <div className="summeta">
+                        {room.name} · {room.board} · {room.beds}
+                      </div>
+                      <div className="summeta">
+                        Check-in {formatWeekday(search.departDate)} · Check-out{' '}
+                        {formatWeekday(search.returnDate)}
+                      </div>
+                      <div className="sumprice">{naira(room.nightly * nights)}</div>
+                    </div>
+
+                    <div className="sumgroup">
+                      <h3>
+                        <span className="ic">✈</span> Flight
+                      </h3>
+                      <div className="summeta">
+                        {search.fromCode} → {destCode} · {flight.name} · {fare.label}
+                      </div>
+                      {/* Clock times stay as authored — the tiers carry fares, not a timetable. */}
+                      <div className="leg">
+                        <div>
+                          <span className="time">14:45</span>
+                          <br />
+                          <span className="code">{search.fromCode}</span>
+                        </div>
+                        <div>
+                          <span className="dur">14h 45m · 1 stop</span>
+                        </div>
+                        <div>
+                          <span className="time">08:30</span>
+                          <br />
+                          <span className="code">{destCode}</span>
+                        </div>
+                      </div>
+                      {/* What the cabin actually includes, rather than the flight's
+                          authored baggage string — the fare is what was bought. */}
+                      <div className="summeta" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                        {fare.bags} · {fare.seat} · {fare.changeable || 'No changes'} ·{' '}
+                        {fare.refundable || 'Non-refundable'}
+                      </div>
+                      <div className="sumprice">{naira(fare.price)}</div>
+                    </div>
+
+                    {selected.transfer && (
+                      <div className="sumgroup">
+                        <h3>
+                          <span className="ic">🚐</span> Airport transfer
+                          <span className="new">New</span>
+                        </h3>
+                        <div className="summeta">{selected.transfer.name}</div>
+                        <div className="sumprice">{naira(selected.transfer.price)}</div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div className="savings">
@@ -843,16 +1076,22 @@ export default function Checkout() {
                 </div>
 
                 <div className="sumgroup" style={{ paddingBottom: 0 }}>
-                  <div className="bline">
-                    <span>
-                      {selected.name} · {search.fromCode} → {destCode}
-                    </span>
-                  </div>
-                  {componentLines.map((line) => (
-                    <div className="bline" key={line.key}>
-                      <span>{line.label}</span>
-                      <b>{naira(line.amount)}</b>
-                    </div>
+                  {/* A multi-city breakdown reads by destination: a bold city
+                      line, that leg's components, then the flight home. */}
+                  {componentGroups.map((group) => (
+                    <Fragment key={group.key}>
+                      {group.title && (
+                        <div className="bline">
+                          <span>{group.strong ? <b>{group.title}</b> : group.title}</span>
+                        </div>
+                      )}
+                      {group.lines.map((line) => (
+                        <div className="bline" key={line.key}>
+                          <span>{line.label}</span>
+                          <b>{naira(line.amount)}</b>
+                        </div>
+                      ))}
+                    </Fragment>
                   ))}
 
                   <div className="bline disc">

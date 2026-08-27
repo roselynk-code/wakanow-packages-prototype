@@ -3,187 +3,24 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import BackBar from '../components/BackBar.jsx';
 import DateRangePicker from '../components/DateRangePicker.jsx';
-import { buildFares, buildRooms } from '../data/variants.js';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { delta, naira, nairaShort } from '../lib/format.js';
+import { flightsForLeg, priceItinerary, visaLegs } from '../lib/itinerary.js';
 import { findFare, findRoom } from '../lib/pricing.js';
 import { useTrip } from '../state/useTrip.js';
 import './PackageBuilder.css';
+import './PackageBuilder.multi.css';
 
-const STEP_LABELS = ['Hotel', 'Flight', 'Transfer', 'Tours', 'Visa'];
-
-/** The builder's own catalogue predates the room and fare lists, so the variants
- *  are derived with the same helpers the package data uses. Those helpers read
- *  the board basis, the cabin and the baggage allowance out of the record's own
- *  prose, which here lives in `feats` rather than `meta`. */
-function withRooms(hotel) {
-  return {
-    ...hotel,
-    rooms: buildRooms({
-      ...hotel,
-      nightlySeparate: hotel.refNightly,
-      meta: `${hotel.meta} · ${hotel.feats.join(' · ')}`,
-    }),
-  };
-}
-
-function withFares(flight) {
-  const ladder = buildFares({
-    ...flight,
-    meta: `${flight.meta} · ${flight.feats.join(' · ')}`,
-  });
-
-  return {
-    ...flight,
-    // The ladder also derives a separate-booking price. These flight records
-    // carry no such figure and the builder never shows one, so the fares are
-    // copied field by field rather than inheriting a price derived from nothing.
-    fares: ladder.map((fare) => ({
-      id: fare.id,
-      isDefault: fare.isDefault,
-      label: fare.label,
-      cabin: fare.cabin,
-      bags: fare.bags,
-      seat: fare.seat,
-      changeable: fare.changeable,
-      refundable: fare.refundable,
-      note: fare.note,
-      price: fare.price,
-    })),
-  };
-}
-
-/** `short` is the name the running total uses. Hotels are priced per night, so
- *  the stay cost tracks the dates: `nightly` is the bundled rate and
- *  `refNightly` the price of booking the same room separately. `quoteRef` marks
- *  the one option whose card the mockup captions with that separate price —
- *  every other option's caption is derived from the current selection. */
-const HOTELS = [
-  {
-    id: 'rove-downtown',
-    name: 'Rove Downtown · 4★',
-    short: 'Rove Downtown',
-    roomName: 'Deluxe room',
-    img: 'i1',
-    nightly: 66800,
-    refNightly: 70400,
-    quoteRef: true,
-    meta: 'Downtown Dubai · 850m to Dubai Mall · free WiFi',
-    feats: ['Breakfast incl.', 'Free cancel until 5 Oct', 'Bundle eligible'],
-  },
-  {
-    id: 'rove-city-centre',
-    name: 'Rove City Centre · 3★',
-    short: 'Rove City Centre',
-    roomName: 'Standard room',
-    img: 'i3',
-    nightly: 57600,
-    refNightly: 64000,
-    meta: 'Deira · near City Centre Mall · free WiFi',
-    feats: ['Room only', 'Bundle eligible'],
-  },
-  {
-    id: 'address-downtown',
-    name: 'Address Downtown · 5★',
-    short: 'Address Downtown',
-    roomName: 'Burj view room',
-    img: 'i5',
-    nightly: 104000,
-    refNightly: 115000,
-    meta: 'Downtown Dubai · Burj Khalifa view · pool & spa',
-    feats: ['Half board', 'Bundle eligible'],
-  },
-].map(withRooms);
-
-const FLIGHTS = [
-  {
-    id: 'ek784',
-    name: 'Emirates · EK 784',
-    short: 'Emirates',
-    img: 'i1',
-    price: 1142000,
-    note: 'in your bundle',
-    meta: 'LOS 14:45 → DXB 08:30 · direct · 7h 45m · return 22:05 → 04:15',
-    feats: ['2 × 23kg', 'Meals', 'Bundle eligible'],
-  },
-  {
-    id: 'tk624',
-    name: 'Turkish Airlines · TK 624',
-    short: 'Turkish Airlines',
-    img: 'i2',
-    price: 988000,
-    meta: 'LOS 11:20 → DXB 09:40 · 1 stop IST · 13h 20m',
-    feats: ['2 × 23kg', 'Bundle eligible'],
-  },
-  {
-    id: 'p47570',
-    name: 'Air Peace · P4 7570',
-    short: 'Air Peace',
-    img: 'i3',
-    price: 904000,
-    meta: 'LOS 09:00 → DXB 19:45 · direct · 7h 45m',
-    feats: ['1 × 23kg', 'Bundle eligible'],
-  },
-].map(withFares);
-
-const TRANSFERS = [
-  {
-    id: 'careem-private',
-    icon: '🚐',
-    name: 'Careem · private car',
-    short: 'Careem transfer',
-    meta: 'Meet & greet at arrivals · up to 4 passengers · both ways',
-    price: 90000,
-    ref: 94000,
-  },
-  {
-    id: 'careem-shuttle',
-    icon: '🚌',
-    name: 'Careem · shared shuttle',
-    short: 'Careem shuttle',
-    meta: 'Airport shuttle · shared with other guests · both ways',
-    price: 42000,
-    ref: 48000,
-  },
-  {
-    id: 'blacklane',
-    icon: '🚘',
-    name: 'Blacklane · premium sedan',
-    short: 'Blacklane transfer',
-    meta: 'Private chauffeur · Mercedes E-Class · both ways',
-    price: 156000,
-    ref: 172000,
-  },
+/** The four steps every destination repeats, in the order they are walked. */
+const LEG_STEPS = [
+  { kind: 'hotel', label: 'Hotel' },
+  { kind: 'flight', label: 'Flight' },
+  { kind: 'transfer', label: 'Transfer' },
+  { kind: 'tours', label: 'Tours' },
 ];
 
-const TOURS = [
-  {
-    id: 'safari',
-    name: 'Desert safari with BBQ dinner',
-    short: 'Desert safari',
-    meta: 'Arabian Adventures · dune drive, camel ride, BBQ · 6hrs · hotel pickup',
-    price: 62000,
-    ref: 74000,
-  },
-  {
-    id: 'burj',
-    name: 'Burj Khalifa · At The Top',
-    short: 'Burj Khalifa',
-    meta: 'Tickets + skip-the-line · 124th & 125th floor · sunset slot',
-    price: 38000,
-    ref: 42000,
-  },
-  {
-    id: 'dhow',
-    name: 'Dhow dinner cruise',
-    short: 'Dhow cruise',
-    meta: 'Dubai Marina · 2hr cruise · buffet dinner · live music',
-    price: 44000,
-    ref: 52000,
-  },
-];
-
-const VISA = { price: 96000, ref: 105000 };
+/** The card art in the generated stylesheet, cycled so every option gets one. */
+const IMG = ['i1', 'i2', 'i3', 'i4', 'i5'];
 
 const TIERS = [
   { name: 'Essential', mod: 'ess', slug: 'tier-essential', price: 1486000, save: 85000 },
@@ -191,20 +28,92 @@ const TIERS = [
   { name: 'Luxury', mod: 'lux', slug: 'tier-luxury', price: 3120000, save: 358000 },
 ];
 
-/** The hotel a custom build ends on is the strongest signal of which tier it
- *  resembles — the tiers differ most on where you stay. */
-const HOTEL_TIER = {
-  'address-downtown': TIERS[2],
-  'rove-city-centre': TIERS[0],
-  'rove-downtown': TIERS[1],
-};
-
-/** The mockup's savings figure, kept verbatim: a flat base scaled by how many
- *  components are still in the bundle. */
-const SAVE_BASE = 186000;
-
 const WHATSAPP_PATH =
   'M12 2a10 10 0 00-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2zm5.8 14.2c-.2.7-1.4 1.3-2 1.4-.5.1-1.1.1-1.8-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2 0 .4-.1.6l-.4.5c-.1.2-.3.3-.1.6.1.3.6 1.1 1.4 1.8 1 .9 1.8 1.1 2 1.3.3.1.4.1.6-.1l.8-.9c.2-.2.4-.2.6-.1l2 1c.2.1.4.2.4.3.1.2.1.7-.1 1.3z';
+
+/** "Emirates · direct both ways" → "Emirates". The running total has 260px. */
+const shortName = (name) => name.split(' · ')[0];
+
+/** Tours, in package terms, are every add-on that is not the visa. */
+const tourAddons = (pkg) => (pkg.addons ?? []).filter((addon) => addon.id !== 'visa');
+
+const visaAddon = (pkg) => (pkg.addons ?? []).find((addon) => addon.id === 'visa');
+
+/**
+ * The hotel a custom build ends on is the strongest signal of which tier it
+ * resembles — the tiers differ most on where you stay. Ranked within the
+ * package's own list rather than by hotel id, so it works for any destination.
+ */
+function closestTier(hotel, hotels) {
+  const ranked = [...hotels].sort((a, b) => a.nightly - b.nightly);
+  if (hotel.id === ranked[0]?.id) return TIERS[0];
+  if (hotel.id === ranked[ranked.length - 1]?.id) return TIERS[2];
+  return TIERS[1];
+}
+
+/** Everything the traveller can change on one leg of the trip. */
+function defaultSelection(entry) {
+  const flight = flightsForLeg(entry)[0];
+  const hotel = entry.pkg.hotels[0];
+  const tourIds = tourAddons(entry.pkg).map((addon) => addon.id);
+
+  return {
+    // The package this selection was built for, so a destination swapped on the
+    // search bar cannot leave a hotel id from the city you no longer visit.
+    slug: entry.pkg.slug,
+    flightId: flight.id,
+    // Resolved through the finders so the flagged default fare and room win
+    // over the cheapest-first ordering of both ladders.
+    fareId: findFare(flight)?.id,
+    hotelId: hotel.id,
+    roomId: findRoom(hotel)?.id,
+    includeTransfer: true,
+    includeTours: true,
+    tourIds,
+    addons: visaAddon(entry.pkg) ? [...tourIds, 'visa'] : tourIds,
+  };
+}
+
+/**
+ * `addons` is the list pricing actually reads, so every toggle rewrites it from
+ * the two things that decide it: the remembered tour list (dropped while tours
+ * are skipped, so skipping and restoring does not lose the choice) and the
+ * visa, which is toggled on its own step.
+ */
+function applySelection(sel, patch, visaOn) {
+  const next = { ...sel, ...patch };
+  const visa = visaOn ?? (sel.addons ?? []).includes('visa');
+  next.addons = [...(next.includeTours ? next.tourIds : []), ...(visa ? ['visa'] : [])];
+  return next;
+}
+
+function reconcileSelections(itinerary, prev) {
+  const next = {};
+  for (const entry of itinerary) {
+    const held = prev[entry.id];
+    next[entry.id] = held && held.slug === entry.pkg.slug ? held : defaultSelection(entry);
+  }
+  return next;
+}
+
+/** The mockup's feature pills, derived from what the package record actually says. */
+function hotelFeats(entry, hotel) {
+  const room = findRoom(hotel);
+  return [
+    room?.board ?? 'Room only',
+    `Free cancel until ${formatShort(addDays(entry.startDate, -entry.pkg.freeCancelDays))}`,
+    hotel.eligible === false ? 'Not in the bundle' : 'Bundle eligible',
+  ];
+}
+
+function flightFeats(flight) {
+  const fare = findFare(flight);
+  return [
+    fare?.bags ?? '1 checked bag',
+    fare?.cabin ?? 'Economy',
+    flight.eligible === false ? 'Not in the bundle' : 'Bundle eligible',
+  ];
+}
 
 /** The stylesheet selects the mockup's clickable cards by tag (`.opt`, `.topt`,
  *  `.stp`, `.mo`), so they keep those elements and pick up button/radio
@@ -226,10 +135,10 @@ function activatable(onActivate, extra) {
 /** Hotels and flights share one card shape. Hotel prices depend on the trip
  *  length, so the caller passes the resolved stay cost rather than the card
  *  reading a fixed figure off the record. */
-function OptionCard({ item, price, selectedPrice, selected, note, metaExtra, onSelect }) {
+function OptionCard({ item, img, feats, price, selectedPrice, selected, note, metaExtra, onSelect }) {
   const diff = price - selectedPrice;
   const caption = selected
-    ? (note ?? 'in your bundle')
+    ? note
     : `${diff > 0 ? '+' : '−'} ${naira(Math.abs(diff))} vs selected`;
 
   return (
@@ -237,7 +146,7 @@ function OptionCard({ item, price, selectedPrice, selected, note, metaExtra, onS
       className={selected ? 'opt sel' : 'opt'}
       {...activatable(onSelect, { role: 'radio', 'aria-checked': selected })}
     >
-      <div className={`img ${item.img}`} />
+      <div className={`img ${img}`} />
       <div className="body">
         <h3>{item.name}</h3>
         <div className="meta">
@@ -245,7 +154,7 @@ function OptionCard({ item, price, selectedPrice, selected, note, metaExtra, onS
           {metaExtra}
         </div>
         <div className="feats">
-          {item.feats.map((feat) => (
+          {feats.map((feat) => (
             <span className="feat" key={feat}>
               {feat}
             </span>
@@ -264,121 +173,138 @@ function OptionCard({ item, price, selectedPrice, selected, note, metaExtra, onS
 export default function PackageBuilder() {
   const navigate = useNavigate();
   const {
+    itinerary,
+    isMultiDestination,
+    routeLabel,
+    payingTravellers,
     search,
     setDates,
-    nights,
-    dateLabel,
-    travellerSummary,
-    payingTravellers,
     setTier,
     setBookingSlug,
+    totalNights,
+    dateLabel,
+    travellerSummary,
   } = useTrip();
 
-  const [step, setStep] = useState(0);
+  const [stepKey, setStepKey] = useState(`${itinerary[0].id}-hotel`);
   const [completed, setCompleted] = useState(() => new Set());
-  const [hotelId, setHotelId] = useState(HOTELS[0].id);
-  const [roomId, setRoomId] = useState(() => findRoom(HOTELS[0]).id);
-  const [flightId, setFlightId] = useState(FLIGHTS[0].id);
-  const [fareId, setFareId] = useState(() => findFare(FLIGHTS[0]).id);
-  const [transferId, setTransferId] = useState(TRANSFERS[0].id);
-  const [tourIds, setTourIds] = useState(() => new Set(['safari']));
-  const [has, setHas] = useState({ transfer: true, tours: true, visa: true });
-  const [modalOpen, setModalOpen] = useState(false);
+  const [selections, setSelections] = useState(() => reconcileSelections(itinerary, {}));
+  const [visaModalLeg, setVisaModalLeg] = useState(null);
   const [visaReason, setVisaReason] = useState(null);
 
-  const hotel = HOTELS.find((h) => h.id === hotelId);
-  const flight = FLIGHTS.find((f) => f.id === flightId);
-  const room = findRoom(hotel, roomId);
-  const fare = findFare(flight, fareId);
-  const transfer = TRANSFERS.find((t) => t.id === transferId);
-  const chosenTours = TOURS.filter((t) => tourIds.has(t.id));
-  const toursTotal = chosenTours.reduce((sum, t) => sum + t.price, 0);
-  // Hotel cards quote every hotel at its own default room, so they stay
-  // comparable with each other; the package carries the chosen room's cost.
-  const hotelFrom = hotel.nightly * nights;
-  const stayCost = room.nightly * nights;
+  // The itinerary is owned by the search bar, so a destination can be added,
+  // dropped or swapped while this screen is mounted. Re-defaulting during
+  // render rather than in an effect means no frame paints with a hotel id that
+  // belongs to a city the trip no longer visits.
+  const stale =
+    Object.keys(selections).length !== itinerary.length ||
+    itinerary.some((entry) => selections[entry.id]?.slug !== entry.pkg.slug);
+  if (stale) setSelections((prev) => reconcileSelections(itinerary, prev));
 
-  const total =
-    stayCost +
-    fare.price +
-    (has.transfer ? transfer.price : 0) +
-    (has.tours ? toursTotal : 0) +
-    (has.visa ? VISA.price : 0);
+  const selFor = (entry) => selections[entry.id] ?? defaultSelection(entry);
 
-  const comps = 2 + (has.transfer ? 1 : 0) + (has.tours ? 1 : 0);
-  // The mockup's flat base, scaled by how many components are still bundled. A
-  // bundle discount is a share of what you spend, so it also rides on the room
-  // and fare: the chosen pair against each product's default pair, which leaves
-  // the authored figure untouched while both are left alone.
-  const defaultCore = findRoom(hotel).nightly * nights + findFare(flight).price;
-  const save = Math.round(
-    SAVE_BASE * ((comps - 1) / 3 + 0.34) * ((stayCost + fare.price) / defaultCore),
-  );
+  const visas = visaLegs(itinerary);
+
+  /** Hotel → Flight → Transfer → Tours for every destination, then one visa
+   *  step for the whole trip. The number is the step within its destination. */
+  const steps = [];
+  for (const entry of itinerary) {
+    LEG_STEPS.forEach((leg, i) => {
+      steps.push({ key: `${entry.id}-${leg.kind}`, kind: leg.kind, label: leg.label, entry, n: i + 1 });
+    });
+  }
+  steps.push({
+    key: 'visa',
+    kind: 'visa',
+    label: visas.length > 1 ? 'Visas' : 'Visa',
+    entry: null,
+    n: LEG_STEPS.length + 1,
+  });
+
+  const stepIndex = Math.max(0, steps.findIndex((s) => s.key === stepKey));
+  const current = steps[stepIndex];
+  const previous = steps[stepIndex - 1];
+  const following = steps[stepIndex + 1];
+
+  const priced = priceItinerary(itinerary, selections, search);
+
+  const entry = current.entry;
+  const sel = entry ? selFor(entry) : null;
+  const legPriced = entry ? priced.legPrices[entry.index] : null;
+  const hotel = legPriced?.priced.hotel;
+  const room = legPriced?.priced.room;
+  const flight = legPriced?.priced.flight;
+  const fare = legPriced?.priced.fare;
+  const lineOf = (lp, key) => lp.priced.lines.find((l) => l.key === key);
+
+  const total = priced.bundled;
 
   useEffect(() => {
-    if (!modalOpen) return undefined;
+    if (!visaModalLeg) return undefined;
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') setModalOpen(false);
+      if (event.key === 'Escape') setVisaModalLeg(null);
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [modalOpen]);
+  }, [visaModalLeg]);
 
-  const goStep = (n) => {
+  const goStep = (target) => {
+    if (!target) return;
     // Moving forward banks the step you are leaving, so the rail can mark it
     // done and let you jump back to it later.
-    if (n > step) {
-      setCompleted((prev) => (prev.has(step) ? prev : new Set(prev).add(step)));
+    if (steps.findIndex((s) => s.key === target.key) > stepIndex) {
+      setCompleted((prev) => (prev.has(current.key) ? prev : new Set(prev).add(current.key)));
     }
-    setStep(n);
+    setStepKey(target.key);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const goRail = (n) => {
-    if (n === step || completed.has(n)) goStep(n);
+  const goRail = (target) => {
+    if (target.key === current.key || completed.has(target.key)) goStep(target);
   };
 
-  const setKept = (key, kept) => setHas((prev) => ({ ...prev, [key]: kept }));
+  const patchSel = (legId, patch, visaOn) =>
+    setSelections((prev) => {
+      const base = prev[legId] ?? defaultSelection(itinerary.find((e) => e.id === legId));
+      return { ...prev, [legId]: applySelection(base, patch, visaOn) };
+    });
 
   // A room id only means something inside its own hotel, and a fare id inside
   // its own flight, so each switch carries the sub-choice back to the new
-  // product's default in the same click.
+  // product's default in the same update.
   const selectHotel = (id) => {
-    setHotelId(id);
-    setRoomId(findRoom(HOTELS.find((h) => h.id === id)).id);
+    const picked = entry.pkg.hotels.find((h) => h.id === id);
+    patchSel(entry.id, { hotelId: id, roomId: findRoom(picked)?.id });
   };
 
   const selectFlight = (id) => {
-    setFlightId(id);
-    setFareId(findFare(FLIGHTS.find((f) => f.id === id)).id);
+    const picked = legPriced.flightOptions.find((f) => f.id === id);
+    patchSel(entry.id, { flightId: id, fareId: findFare(picked)?.id });
   };
 
-  const toggleTour = (id) =>
-    setTourIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+  const toggleTour = (id) => {
+    const held = sel.tourIds;
+    patchSel(entry.id, {
+      tourIds: held.includes(id) ? held.filter((x) => x !== id) : [...held, id],
     });
+  };
 
-  const toggleVisa = () => {
-    if (has.visa) {
-      setVisaReason(null);
-      setModalOpen(true);
-    } else {
-      setKept('visa', true);
-    }
+  const setVisaOn = (leg, on) => patchSel(leg.id, {}, on);
+
+  const openVisaModal = (leg) => {
+    setVisaReason(null);
+    setVisaModalLeg(leg);
   };
 
   const removeVisa = () => {
     if (!visaReason) return;
-    setModalOpen(false);
-    setKept('visa', false);
+    setVisaOn(visaModalLeg, false);
+    setVisaModalLeg(null);
   };
 
   const keepVisa = () => {
-    setModalOpen(false);
-    setKept('visa', true);
+    setVisaOn(visaModalLeg, true);
+    setVisaModalLeg(null);
   };
 
   const selectTier = (tier) => {
@@ -388,9 +314,17 @@ export default function PackageBuilder() {
   };
 
   const checkout = () => {
+    if (isMultiDestination) {
+      // No tier is a multi-city trip, so there is nothing to approximate here:
+      // checkout reads the itinerary itself from context and prices every leg.
+      setBookingSlug(itinerary[0].pkg.slug);
+      navigate('/checkout');
+      return;
+    }
     // An approximation: the builder's exact custom combination has no catalogue
     // record, so checkout shows the closest tier.
-    const closest = HOTEL_TIER[hotelId] ?? TIERS[1];
+    const only = itinerary[0];
+    const closest = closestTier(priced.legPrices[0].priced.hotel, only.pkg.hotels);
     setTier(closest.name);
     setBookingSlug(closest.slug);
     navigate('/checkout');
@@ -405,9 +339,84 @@ export default function PackageBuilder() {
     );
   };
 
-  const toursLabel = chosenTours.length
-    ? chosenTours.map((t) => t.short).join(' + ')
-    : 'Tours';
+  /** The running total's lines for one leg, priced whether or not they are on —
+   *  a skipped component still shows, struck through, at what it would cost. */
+  const totalLines = (legEntry, lp) => {
+    const choice = selFor(legEntry);
+    const pkg = legEntry.pkg;
+    const rows = [
+      {
+        key: 'hotel',
+        label: `${shortName(lp.priced.hotel.name)} · ${lp.priced.room?.name ?? 'Room'}`,
+        amount: lineOf(lp, 'hotel').bundled,
+      },
+      {
+        key: 'flight',
+        label: `${shortName(lp.priced.flight.name)} · ${legEntry.isOnly ? 'return' : 'one way'}`,
+        amount: lineOf(lp, 'flight').bundled,
+      },
+    ];
+
+    if (pkg.transfer) {
+      rows.push({
+        key: 'transfer',
+        // "Careem · private airport transfers" is the supplier and the product.
+        // Where the name splits, the supplier is the half worth 260px.
+        label: pkg.transfer.name.includes(' · ')
+          ? `${shortName(pkg.transfer.name)} transfer`
+          : pkg.transfer.name,
+        amount: pkg.transfer.price,
+        off: !choice.includeTransfer,
+      });
+    }
+
+    const chosen = tourAddons(pkg).filter((addon) => choice.tourIds.includes(addon.id));
+    const toursAmount =
+      chosen.reduce((sum, addon) => sum + addon.price, 0) + (pkg.tours?.price ?? 0);
+    const toursLabel =
+      chosen.length === 0
+        ? (pkg.tours?.label ?? 'Tours')
+        : chosen.length === 1
+          ? shortName(chosen[0].title)
+          : `${chosen.length} tours & extras`;
+    rows.push({
+      key: 'tours',
+      label: toursLabel,
+      amount: toursAmount,
+      off: !choice.includeTours || toursAmount === 0,
+    });
+
+    const visa = visaAddon(pkg);
+    if (visa) {
+      rows.push({
+        key: 'visa',
+        label: shortName(visa.title),
+        amount: visa.price,
+        off: !choice.addons.includes('visa'),
+      });
+    }
+
+    return rows;
+  };
+
+  // Crossing into another destination is the change worth naming on the button.
+  const crossesTo = (s) =>
+    isMultiDestination && s?.entry && current.entry && s.entry !== current.entry;
+  const nextLabel =
+    following && (crossesTo(following) ? following.entry.toCity : following.label.toLowerCase());
+  const backLabel = previous && (crossesTo(previous) ? previous.entry.toCity : previous.label);
+
+  const cityIn = (city) => (isMultiDestination ? ` in ${city}` : '');
+
+  /** The rail is the step list with a city label opening each destination's
+   *  group — on a single-destination trip there is nothing to label. */
+  const railItems = [];
+  for (const s of steps) {
+    if (isMultiDestination && s.entry && s.entry !== railItems[railItems.length - 1]?.entry) {
+      railItems.push({ key: `city-${s.entry.id}`, city: s.entry.toCity, entry: s.entry });
+    }
+    railItems.push({ key: s.key, step: s, entry: s.entry });
+  }
 
   return (
     <div className="pg-builder">
@@ -432,13 +441,11 @@ export default function PackageBuilder() {
       <div className="sumbar">
         <div className="wrap">
           <span>
-            <b>
-              {search.fromCity} → {search.toCity}
-            </b>{' '}
-            · {nights} nights · {travellerSummary()}
+            <b>{isMultiDestination ? routeLabel : `${search.fromCity} → ${search.toCity}`}</b> ·{' '}
+            {totalNights} nights · {travellerSummary()}
           </span>
           {/* The dates live in the bar on every step, so the trip can be
-              re-dated from step 5 without going back to the search. */}
+              re-dated from the last step without going back to the search. */}
           <DateRangePicker
             departDate={search.departDate}
             returnDate={search.returnDate}
@@ -459,23 +466,27 @@ export default function PackageBuilder() {
 
       <div className="rail">
         <div className="wrap">
-          {STEP_LABELS.map((label, i) => {
-            const state = i === step ? ' cur' : completed.has(i) ? ' done' : '';
-            return (
-              <Fragment key={label}>
+          {railItems.map((item, i) => (
+            <Fragment key={item.key}>
+              {i > 0 && <span className="arr">→</span>}
+              {item.city ? (
+                // A heading, not a destination: no number and nothing to click.
+                <div className="stp">{item.city}</div>
+              ) : (
                 <div
-                  className={`stp${state}`}
-                  {...activatable(() => goRail(i), {
+                  className={`stp${
+                    item.step.key === current.key ? ' cur' : completed.has(item.step.key) ? ' done' : ''
+                  }`}
+                  {...activatable(() => goRail(item.step), {
                     role: 'button',
-                    'aria-current': i === step ? 'step' : undefined,
+                    'aria-current': item.step.key === current.key ? 'step' : undefined,
                   })}
                 >
-                  <span className="n">{i + 1}</span> {label}
+                  <span className="n">{item.step.n}</span> {item.step.label}
                 </div>
-                {i < STEP_LABELS.length - 1 && <span className="arr">→</span>}
-              </Fragment>
-            );
-          })}
+              )}
+            </Fragment>
+          ))}
         </div>
       </div>
 
@@ -483,78 +494,132 @@ export default function PackageBuilder() {
         <div className="layout">
           <aside className="lside">
             <div className="tierbox">
-              <div className="tierbox-h">Auto-generated packages</div>
-              {TIERS.map((tier) => (
-                <div className={`tm ${tier.mod}`} key={tier.name}>
-                  <div className="tn">{tier.name}</div>
-                  <b>{naira(tier.price)}</b>
-                  <small>Save {nairaShort(tier.save)}</small>
-                  <button className="go" onClick={() => selectTier(tier)}>
-                    Select
-                  </button>
-                </div>
-              ))}
-              <div className="tierbox-f">Selecting a tier goes straight to checkout.</div>
+              {isMultiDestination ? (
+                <>
+                  <div className="tierbox-h">Your itinerary</div>
+                  {priced.legPrices.map((leg) => (
+                    <div className="tm" key={leg.entry.id}>
+                      <div className="tn">{leg.entry.toCity}</div>
+                      <b>{naira(leg.priced.bundled)}</b>
+                      <small>
+                        {leg.entry.nights} night{leg.entry.nights === 1 ? '' : 's'}
+                      </small>
+                    </div>
+                  ))}
+                  <div className="tierbox-f">
+                    Auto-generated tiers cover single-destination trips only. A multi-city trip is
+                    priced from the legs above.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="tierbox-h">Auto-generated packages</div>
+                  {TIERS.map((tier) => (
+                    <div className={`tm ${tier.mod}`} key={tier.name}>
+                      <div className="tn">{tier.name}</div>
+                      <b>{naira(tier.price)}</b>
+                      <small>Save {nairaShort(tier.save)}</small>
+                      <button className="go" onClick={() => selectTier(tier)}>
+                        Select
+                      </button>
+                    </div>
+                  ))}
+                  <div className="tierbox-f">Selecting a tier goes straight to checkout.</div>
+                </>
+              )}
             </div>
           </aside>
 
           <div className="main">
-            {step === 0 && (
+            {current.kind === 'hotel' && (
               <div className="panel active">
                 <div className="sthead">
-                  <h1>Choose your hotel</h1>
-                  <span className="cnt">12 options for your dates</span>
+                  <h1>Choose your hotel{cityIn(entry.toCity)}</h1>
+                  <span className="cnt">
+                    {entry.pkg.hotels.length} options for your dates
+                  </span>
                 </div>
-                <p className="stnote">
-                  Your stay dates default to your search dates. Adjust below if needed — you don't
-                  have to check in the same day you fly.
-                </p>
+                {entry.isFirst ? (
+                  <p className="stnote">
+                    Your stay dates default to your search dates. Adjust below if needed — you don't
+                    have to check in the same day you fly.
+                  </p>
+                ) : (
+                  <p className="stnote">
+                    You arrive from {entry.fromCity} on {formatShort(entry.startDate)} and stay{' '}
+                    {entry.nights} night{entry.nights === 1 ? '' : 's'}. Change the length of this
+                    stop on the search bar's destination list — everything after it shifts to match.
+                  </p>
+                )}
 
-                <div className="datebar">
-                  <DateRangePicker
-                    departDate={search.departDate}
-                    returnDate={search.returnDate}
-                    onChange={setDates}
-                    triggerClassName="datefield"
-                    anchorStyle={{ flex: 1 }}
-                    align="left"
-                    label="Check-in"
-                  >
-                    <div className="dl">Check-in</div>
-                    <div className="dv">{formatWeekday(search.departDate)}</div>
-                  </DateRangePicker>
-                  <DateRangePicker
-                    departDate={search.departDate}
-                    returnDate={search.returnDate}
-                    onChange={setDates}
-                    triggerClassName="datefield"
-                    anchorStyle={{ flex: 1 }}
-                    align="left"
-                    label="Check-out"
-                  >
-                    <div className="dl">Check-out</div>
-                    <div className="dv">{formatWeekday(search.returnDate)}</div>
-                  </DateRangePicker>
-                  <span className="datenights">{nights} nights</span>
-                </div>
-                <p className="datenote">
-                  💡 Your flight arrives {formatShort(search.departDate)} at 08:30. If you're
-                  arriving late or staying with family the first night, move check-in to{' '}
-                  {formatShort(addDays(search.departDate, 1))} — you'll save one night's hotel cost.
-                </p>
+                {entry.isFirst ? (
+                  <div className="datebar">
+                    <DateRangePicker
+                      departDate={search.departDate}
+                      returnDate={search.returnDate}
+                      onChange={setDates}
+                      triggerClassName="datefield"
+                      anchorStyle={{ flex: 1 }}
+                      align="left"
+                      label="Check-in"
+                    >
+                      <div className="dl">Check-in</div>
+                      <div className="dv">{formatWeekday(search.departDate)}</div>
+                    </DateRangePicker>
+                    <DateRangePicker
+                      departDate={search.departDate}
+                      returnDate={search.returnDate}
+                      onChange={setDates}
+                      triggerClassName="datefield"
+                      anchorStyle={{ flex: 1 }}
+                      align="left"
+                      label="Check-out"
+                    >
+                      <div className="dl">Check-out</div>
+                      <div className="dv">{formatWeekday(search.returnDate)}</div>
+                    </DateRangePicker>
+                    <span className="datenights">{entry.nights} nights</span>
+                  </div>
+                ) : (
+                  // A later leg's dates are the previous leg's end plus its own
+                  // length, so they are shown rather than offered for editing.
+                  <div className="datebar">
+                    <div className="datefield" style={{ flex: 1 }}>
+                      <div className="dl">Check-in</div>
+                      <div className="dv">{formatWeekday(entry.startDate)}</div>
+                    </div>
+                    <div className="datefield" style={{ flex: 1 }}>
+                      <div className="dl">Check-out</div>
+                      <div className="dv">{formatWeekday(entry.endDate)}</div>
+                    </div>
+                    <span className="datenights">{entry.nights} nights</span>
+                  </div>
+                )}
+                {entry.isFirst && (
+                  <p className="datenote">
+                    💡 Your flight arrives {formatShort(search.departDate)} at 08:30. If you're
+                    arriving late or staying with family the first night, move check-in to{' '}
+                    {formatShort(addDays(search.departDate, 1))} — you'll save one night's hotel cost.
+                  </p>
+                )}
 
                 <div role="radiogroup" aria-label="Hotel">
-                  {HOTELS.map((item) => (
+                  {entry.pkg.hotels.map((item, i) => (
                     <Fragment key={item.id}>
                       <OptionCard
                         item={item}
-                        price={item.nightly * nights}
-                        selected={item.id === hotelId}
-                        selectedPrice={hotelFrom}
+                        img={IMG[i % IMG.length]}
+                        feats={hotelFeats(entry, item)}
+                        price={item.nightly * entry.nights}
+                        selected={item.id === hotel.id}
+                        // Every hotel is quoted at its own default room, so the
+                        // cards stay comparable with each other; the package
+                        // carries the chosen room's cost.
+                        selectedPrice={hotel.nightly * entry.nights}
                         note={
-                          item.quoteRef
-                            ? `${naira(item.refNightly * nights)} separately`
-                            : undefined
+                          item.eligible === false
+                            ? 'not in the bundle'
+                            : `${naira(item.nightlySeparate * entry.nights)} separately`
                         }
                         metaExtra={` · ${naira(item.nightly)} a night`}
                         onSelect={() => selectHotel(item.id)}
@@ -562,7 +627,7 @@ export default function PackageBuilder() {
                       {/* The rooms hang under the hotel they belong to, so the
                           second choice reads as part of that card rather than
                           as three more hotels. */}
-                      {item.id === hotelId && (
+                      {item.id === hotel.id && (
                         <>
                           <p className="stnote">Room type</p>
                           <div role="radiogroup" aria-label="Room type">
@@ -570,7 +635,7 @@ export default function PackageBuilder() {
                               <article
                                 key={r.id}
                                 className={r.id === room.id ? 'topt sel' : 'topt'}
-                                {...activatable(() => setRoomId(r.id), {
+                                {...activatable(() => patchSel(entry.id, { roomId: r.id }), {
                                   role: 'radio',
                                   'aria-checked': r.id === room.id,
                                 })}
@@ -582,7 +647,7 @@ export default function PackageBuilder() {
                                   </div>
                                 </div>
                                 <div className="price">
-                                  <div className="amt">{naira(r.nightly * nights)}</div>
+                                  <div className="amt">{naira(r.nightly * entry.nights)}</div>
                                   <div className="ref" style={{ textDecoration: 'none' }}>
                                     {naira(r.nightly)} a night
                                   </div>
@@ -597,35 +662,56 @@ export default function PackageBuilder() {
                 </div>
 
                 <div className="snav">
-                  <button className="nextb" onClick={() => goStep(1)}>
-                    Continue to flight →
+                  {previous && (
+                    <button className="backb" onClick={() => goStep(previous)}>
+                      ← {backLabel}
+                    </button>
+                  )}
+                  <button className="nextb" onClick={() => goStep(following)}>
+                    Continue to {nextLabel} →
                   </button>
                 </div>
               </div>
             )}
 
-            {step === 1 && (
+            {current.kind === 'flight' && (
               <div className="panel active">
                 <div className="sthead">
-                  <h1>Choose your flight</h1>
-                  <span className="cnt">3 of 14 options</span>
+                  <h1>Choose your flight{isMultiDestination ? ` to ${entry.toCity}` : ''}</h1>
+                  <span className="cnt">{legPriced.flightOptions.length} of 14 options</span>
                 </div>
                 <p className="stnote">
-                  Your hotel is locked in. Every price below already includes your bundle discount.
+                  {isMultiDestination ? (
+                    <>
+                      {entry.fromCity} → {entry.toCity}. One way — your flight home is priced
+                      separately at the end.
+                    </>
+                  ) : (
+                    <>
+                      Your hotel is locked in. Every price below already includes your bundle
+                      discount.
+                    </>
+                  )}
                 </p>
 
                 <div role="radiogroup" aria-label="Flight">
-                  {FLIGHTS.map((item) => (
+                  {legPriced.flightOptions.map((item, i) => (
                     <Fragment key={item.id}>
                       <OptionCard
                         item={item}
+                        img={IMG[i % IMG.length]}
+                        feats={flightFeats(item)}
                         price={item.price}
-                        selected={item.id === flightId}
+                        selected={item.id === flight.id}
                         selectedPrice={flight.price}
-                        note={item.note}
+                        note={
+                          item.eligible === false
+                            ? 'not in the bundle'
+                            : `${naira(item.separate)} separately`
+                        }
                         onSelect={() => selectFlight(item.id)}
                       />
-                      {item.id === flightId && (
+                      {item.id === flight.id && (
                         <>
                           <p className="stnote">Cabin and fare</p>
                           <div role="radiogroup" aria-label="Cabin and fare">
@@ -635,7 +721,7 @@ export default function PackageBuilder() {
                                 <article
                                   key={f.id}
                                   className={f.id === fare.id ? 'topt sel' : 'topt'}
-                                  {...activatable(() => setFareId(f.id), {
+                                  {...activatable(() => patchSel(entry.id, { fareId: f.id }), {
                                     role: 'radio',
                                     'aria-checked': f.id === fare.id,
                                   })}
@@ -667,102 +753,113 @@ export default function PackageBuilder() {
                 </div>
 
                 <div className="snav">
-                  <button className="backb" onClick={() => goStep(0)}>
-                    ← Hotel
+                  <button className="backb" onClick={() => goStep(previous)}>
+                    ← {backLabel}
                   </button>
-                  <button className="nextb" onClick={() => goStep(2)}>
-                    Continue to transfer →
+                  <button className="nextb" onClick={() => goStep(following)}>
+                    Continue to {nextLabel} →
                   </button>
                 </div>
               </div>
             )}
 
-            {step === 2 && (
+            {current.kind === 'transfer' && (
               <div className="panel active">
                 <div className="sthead">
-                  <h1>Airport transfer</h1>
+                  <h1>Airport transfer{cityIn(entry.toCity)}</h1>
                 </div>
                 <p className="stnote">
                   Both ways — airport to hotel and back. Included in your package by default. Toggle
                   off if you're arranging your own.
                 </p>
 
-                {has.transfer ? (
-                  <div role="radiogroup" aria-label="Airport transfer">
-                    {TRANSFERS.map((item) => (
-                      <article
-                        key={item.id}
-                        className={item.id === transferId ? 'topt sel' : 'topt'}
-                        {...activatable(() => setTransferId(item.id), {
-                          role: 'radio',
-                          'aria-checked': item.id === transferId,
-                        })}
-                      >
-                        <span className="ic">{item.icon}</span>
-                        <div className="body">
-                          <h3>{item.name}</h3>
-                          <div className="meta">{item.meta}</div>
-                        </div>
-                        <div className="price">
-                          <div className="amt">{naira(item.price)}</div>
-                          <div className="ref">{naira(item.ref)} separately</div>
-                        </div>
-                      </article>
-                    ))}
+                {!entry.pkg.transfer ? (
+                  <div className="skipbanner" style={{ display: 'block' }}>
+                    <p>No transfer is offered in {entry.toCity} — nothing to add here.</p>
                   </div>
+                ) : sel.includeTransfer ? (
+                  <article className="topt sel">
+                    <span className="ic">🚐</span>
+                    <div className="body">
+                      <h3>{entry.pkg.transfer.name}</h3>
+                      <div className="meta">{entry.pkg.transfer.desc}</div>
+                    </div>
+                    <div className="price">
+                      <div className="amt">{naira(entry.pkg.transfer.price)}</div>
+                      <div className="ref">{naira(entry.pkg.transfer.separate)} separately</div>
+                    </div>
+                  </article>
                 ) : (
                   <div className="skipbanner" style={{ display: 'block' }}>
                     <p>Transfer skipped — not in your package</p>
-                    <button onClick={() => setKept('transfer', true)}>Add transfer back</button>
+                    <button onClick={() => patchSel(entry.id, { includeTransfer: true })}>
+                      Add transfer back
+                    </button>
                   </div>
                 )}
 
                 <div className="snav">
-                  <button className="backb" onClick={() => goStep(1)}>
-                    ← Flight
+                  <button className="backb" onClick={() => goStep(previous)}>
+                    ← {backLabel}
                   </button>
-                  {has.transfer && (
-                    <button className="skipb" onClick={() => setKept('transfer', false)}>
+                  {entry.pkg.transfer && sel.includeTransfer && (
+                    <button
+                      className="skipb"
+                      onClick={() => patchSel(entry.id, { includeTransfer: false })}
+                    >
                       Skip transfer
                     </button>
                   )}
-                  <button className="nextb" onClick={() => goStep(3)}>
-                    Continue to tours →
+                  <button className="nextb" onClick={() => goStep(following)}>
+                    Continue to {nextLabel} →
                   </button>
                 </div>
               </div>
             )}
 
-            {step === 3 && (
+            {current.kind === 'tours' && (
               <div className="panel active">
                 <div className="sthead">
-                  <h1>Tours &amp; experiences</h1>
+                  <h1>Tours &amp; experiences{cityIn(entry.toCity)}</h1>
                 </div>
                 <p className="stnote">
                   Add as many as you like — each one adds to your bundle discount. All pre-selected
                   by default. Toggle any off.
                 </p>
 
-                {has.tours ? (
+                {sel.includeTours ? (
                   <div>
-                    {TOURS.map((item) => {
-                      const on = tourIds.has(item.id);
+                    {entry.pkg.tours && (
+                      <article className="topt sel">
+                        <span className="ic">🗺</span>
+                        <div className="body">
+                          <h3>{entry.pkg.tours.label}</h3>
+                          <div className="meta">{entry.pkg.tours.desc}</div>
+                        </div>
+                        <div className="price">
+                          <div className="amt">{naira(entry.pkg.tours.price)}</div>
+                          <div className="ref">{naira(entry.pkg.tours.separate)} separately</div>
+                        </div>
+                      </article>
+                    )}
+                    {tourAddons(entry.pkg).map((item) => {
+                      const on = sel.tourIds.includes(item.id);
                       return (
                         <article key={item.id} className={on ? 'topt sel' : 'topt'}>
                           <button
                             className={on ? 'tgl on' : 'tgl'}
                             role="switch"
                             aria-checked={on}
-                            aria-label={item.name}
+                            aria-label={item.title}
                             onClick={() => toggleTour(item.id)}
                           />
                           <div className="body">
-                            <h3>{item.name}</h3>
+                            <h3>{item.title}</h3>
                             <div className="meta">{item.meta}</div>
                           </div>
                           <div className="price">
                             <div className="amt">{naira(item.price)}</div>
-                            <div className="ref">{naira(item.ref)} separately</div>
+                            <div className="ref">{naira(item.separate)} separately</div>
                           </div>
                         </article>
                       );
@@ -771,77 +868,123 @@ export default function PackageBuilder() {
                 ) : (
                   <div className="skipbanner" style={{ display: 'block' }}>
                     <p>Tours skipped — not in your package</p>
-                    <button onClick={() => setKept('tours', true)}>Add tours back</button>
+                    <button onClick={() => patchSel(entry.id, { includeTours: true })}>
+                      Add tours back
+                    </button>
                   </div>
                 )}
 
                 <div className="snav">
-                  <button className="backb" onClick={() => goStep(2)}>
-                    ← Transfer
+                  <button className="backb" onClick={() => goStep(previous)}>
+                    ← {backLabel}
                   </button>
-                  {has.tours && (
-                    <button className="skipb" onClick={() => setKept('tours', false)}>
+                  {sel.includeTours && (
+                    <button
+                      className="skipb"
+                      onClick={() => patchSel(entry.id, { includeTours: false })}
+                    >
                       Skip all tours
                     </button>
                   )}
-                  <button className="nextb" onClick={() => goStep(4)}>
-                    Continue to visa →
+                  <button className="nextb" onClick={() => goStep(following)}>
+                    Continue to {nextLabel} →
                   </button>
                 </div>
               </div>
             )}
 
-            {step === 4 && (
+            {current.kind === 'visa' && (
               <div className="panel active">
                 <div className="sthead">
-                  <h1>Visa</h1>
+                  <h1>{visas.length > 1 ? 'Visas' : 'Visa'}</h1>
                 </div>
-                <p className="stnote">
-                  A visa is required for {search.nationality} passport holders entering the UAE.
-                  Wakanow can apply for you.
-                </p>
-
-                {has.visa ? (
-                  <div className="visacard">
-                    <h3>🛂 UAE tourist visa · 30-day single entry</h3>
-                    <div className="visabanner">
-                      <b>Required for {search.nationality} passports.</b> Wakanow applies for you —
-                      5–7 working days. Documents collected by email after payment. If you already
-                      hold a valid UAE visa, you can remove this.
+                {visas.length === 0 ? (
+                  <>
+                    <p className="stnote">
+                      Nothing to arrange here — none of the destinations on this trip needs a visa on
+                      a {search.nationality} passport.
+                    </p>
+                    <div className="skipbanner" style={{ display: 'block' }}>
+                      <p>No visas required for this trip</p>
                     </div>
-                    <div className="visarow">
-                      <div className="body">
-                        <h3 style={{ fontSize: '13px' }}>Visa processing by Wakanow</h3>
-                        <div className="meta">
-                          Applied for on your behalf · approval 5–7 working days
-                        </div>
-                      </div>
-                      <div className="price">
-                        <div className="amt">{naira(VISA.price)}</div>
-                        <div className="ref">{naira(VISA.ref)} separately</div>
-                      </div>
-                      <button
-                        className="tgl on"
-                        role="switch"
-                        aria-checked="true"
-                        aria-label="Visa processing by Wakanow"
-                        onClick={toggleVisa}
-                      />
-                    </div>
-                    <div className="visanote">
-                      ⚠ Documents must be submitted within 5 working days of booking.
-                    </div>
-                  </div>
+                  </>
                 ) : (
-                  <div className="skipbanner" style={{ display: 'block' }}>
-                    <p>Visa skipped — you confirmed you hold a valid visa</p>
-                    <button onClick={() => setKept('visa', true)}>Add visa back</button>
-                  </div>
+                  <>
+                    <p className="stnote">
+                      {visas.length > 1
+                        ? `Each destination is applied for separately. Wakanow can handle all ${visas.length}.`
+                        : `A visa is required for ${search.nationality} passport holders entering ${visas[0].country}. Wakanow can apply for you.`}
+                    </p>
+
+                    {visas.map((leg) => {
+                      const addon = visaAddon(leg.pkg);
+                      const on = selFor(leg).addons.includes('visa');
+
+                      if (!addon) {
+                        // The destination requires a visa the catalogue does not
+                        // price, so it is stated rather than offered for sale.
+                        return (
+                          <div className="visacard" key={leg.id}>
+                            <h3>🛂 {leg.toCity} · visa required</h3>
+                            <div className="visabanner">
+                              <b>Required for {search.nationality} passports entering {leg.country}.</b>{' '}
+                              Wakanow does not process this one — arrange it before you travel.
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (!on) {
+                        return (
+                          <div className="skipbanner" style={{ display: 'block' }} key={leg.id}>
+                            <p>
+                              {leg.toCity} visa skipped — you confirmed you hold a valid visa
+                            </p>
+                            <button onClick={() => setVisaOn(leg, true)}>Add visa back</button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="visacard" key={leg.id}>
+                          <h3>
+                            🛂 {addon.title}
+                            {isMultiDestination ? ` · ${leg.toCity}` : ''}
+                          </h3>
+                          <div className="visabanner">
+                            <b>Required for {search.nationality} passports entering {leg.country}.</b>{' '}
+                            Wakanow applies for you — documents collected by email after payment. If
+                            you already hold a valid visa, you can remove this.
+                          </div>
+                          <div className="visarow">
+                            <div className="body">
+                              <h3 style={{ fontSize: '13px' }}>{addon.title}</h3>
+                              <div className="meta">{addon.meta}</div>
+                            </div>
+                            <div className="price">
+                              <div className="amt">{naira(addon.price)}</div>
+                              <div className="ref">{naira(addon.separate)} separately</div>
+                            </div>
+                            <button
+                              className="tgl on"
+                              role="switch"
+                              aria-checked="true"
+                              aria-label={`${addon.title} for ${leg.toCity}`}
+                              onClick={() => openVisaModal(leg)}
+                            />
+                          </div>
+                          <div className="visanote">
+                            ⚠ Documents must be submitted within 5 working days of booking.
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
 
                 <div className="snav">
-                  <button className="backb" onClick={() => goStep(3)}>
-                    ← Tours
+                  <button className="backb" onClick={() => goStep(previous)}>
+                    ← {backLabel}
                   </button>
                   <button
                     className="nextb"
@@ -858,32 +1001,38 @@ export default function PackageBuilder() {
           <aside className="rside">
             <div className="totbox">
               <div className="totbox-h">
-                Your package <small>{payingTravellers} travellers</small>
+                {isMultiDestination ? routeLabel : 'Your package'}{' '}
+                <small>{payingTravellers} travellers</small>
               </div>
               <div className="totbox-b">
-                <div className="tl">
-                  <span>
-                    {hotel.short} · {room.name}
-                  </span>
-                  <b>{naira(stayCost)}</b>
+                {priced.legPrices.map((leg) => (
+                  <Fragment key={leg.entry.id}>
+                    {isMultiDestination && (
+                      <div className="tl">
+                        <span>
+                          <b>{leg.entry.toCity}</b>
+                        </span>
+                      </div>
+                    )}
+                    {totalLines(leg.entry, leg).map((row) => (
+                      <div className={row.off ? 'tl off' : 'tl'} key={row.key}>
+                        <span>{row.label}</span>
+                        <b>{naira(row.amount)}</b>
+                      </div>
+                    ))}
+                  </Fragment>
+                ))}
+                {priced.home && (
+                  <div className="tl">
+                    <span>{priced.home.label}</span>
+                    <b>{naira(priced.home.bundled)}</b>
+                  </div>
+                )}
+                <div className="tsv">
+                  {priced.eligible
+                    ? `You save ${naira(priced.save)} vs booking separately`
+                    : 'No bundle price on this combination'}
                 </div>
-                <div className="tl">
-                  <span>{flight.short} · return</span>
-                  <b>{naira(fare.price)}</b>
-                </div>
-                <div className={has.transfer ? 'tl' : 'tl off'}>
-                  <span>{transfer.short}</span>
-                  <b>{naira(transfer.price)}</b>
-                </div>
-                <div className={has.tours && chosenTours.length ? 'tl' : 'tl off'}>
-                  <span>{toursLabel}</span>
-                  <b>{naira(toursTotal)}</b>
-                </div>
-                <div className={has.visa ? 'tl' : 'tl off'}>
-                  <span>UAE visa</span>
-                  <b>{naira(VISA.price)}</b>
-                </div>
-                <div className="tsv">You save {naira(save)} vs booking separately</div>
                 <div className="tg">
                   <span>Total /person</span>
                   <b>{naira(total)}</b>
@@ -903,20 +1052,25 @@ export default function PackageBuilder() {
         </div>
       </div>
 
-      {modalOpen && (
+      {visaModalLeg && (
         <div
           className="overlay open"
           onClick={(event) => {
-            if (event.target === event.currentTarget) setModalOpen(false);
+            if (event.target === event.currentTarget) setVisaModalLeg(null);
           }}
         >
-          <div className="modal" role="dialog" aria-modal="true" aria-label="Before you remove the visa">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Before you remove the ${visaModalLeg.toCity} visa`}
+          >
             <div className="mhead">
               <div className="mic">🛂</div>
-              <h2>Before you remove the visa</h2>
+              <h2>Before you remove the {visaModalLeg.toCity} visa</h2>
               <p>
-                {search.nationality} passport holders need a visa to enter the UAE. Removing it
-                means Wakanow will not arrange one for you.
+                {search.nationality} passport holders need a visa to enter {visaModalLeg.country}.
+                Removing it means Wakanow will not arrange one for you.
               </p>
             </div>
             <div className="mbody">
@@ -930,7 +1084,9 @@ export default function PackageBuilder() {
                 >
                   <span className="rad" />
                   <div>
-                    <div className="mt">I already hold a valid UAE visa</div>
+                    <div className="mt">
+                      I already hold a valid {visaModalLeg.country} visa
+                    </div>
                     <div className="ms">Your visa covers your travel dates.</div>
                   </div>
                 </div>
@@ -950,7 +1106,7 @@ export default function PackageBuilder() {
               </div>
               <div className={visaReason === 'free' ? 'mwarn show' : 'mwarn'}>
                 <b>Our records disagree.</b> {search.nationality} passport holders require a visa
-                for the UAE. We strongly recommend keeping the visa in your package.
+                for {visaModalLeg.country}. We strongly recommend keeping the visa in your package.
               </div>
               <div className="macts">
                 <button className="mkeep" onClick={keepVisa}>
