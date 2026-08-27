@@ -126,6 +126,38 @@ tools/
   make-artifact.mjs       dist/ -> one self-contained HTML file
 ```
 
+### The design system lives in one file
+
+`src/theme.css` publishes the Wakanow design system's tokens on `:root` — the
+blue and orange ramps, the cool-grey neutrals, the type scale, the 4px spacing
+scale, the radii, the soft elevation ramp and the motion curves. It is imported
+first in `src/main.jsx`, before the shell and before any page stylesheet, so
+every token is available everywhere.
+
+The five ported page stylesheets each still declare their own token *names* on
+their wrapper — `--brand-500`, `--r-card`, `--sh-hover` and so on — because the
+rules beneath them reference those names by the hundred. But every one of those
+names is now an **alias**: `--brand-500: var(--wkn-blue-700)`. So the palette
+has exactly one definition, and re-skinning is a one-file edit rather than a
+five-place edit with five chances to drift.
+
+**To change a colour, a radius or a shadow, change it in `src/theme.css`.**
+Only touch a page's token block if that page genuinely needs a different
+*mapping*, not a different value.
+
+Three things the system rules out that the mockups had used, and where they went:
+
+| Ruled out | Was | Now |
+| --- | --- | --- |
+| Gradients | hero, image plates, price ledger, icon tiles | flat brand colours; destination plates cycle `CARD` in `src/data/packages.js` so no two touch |
+| Glassmorphism | the landing search widget | a solid white card on the blue hero |
+| Dark nav bar | all five screens | white surface, hairline border, orange active underline |
+
+Two substitutions the design system itself flags: **Poppins** stands in for
+Wakanow's licensed display face, and the destination plates stand in for
+photography. Both are single-place swaps — the font in `index.html` and
+`--font-sans`, the plates in `CARD`/`SHOTS`.
+
 ### The page CSS is generated
 
 Each mockup was authored standalone, so they reuse class names (`.opt`, `.tgl`,
@@ -138,6 +170,12 @@ collapsing onto that same wrapper so each page keeps its own token values.
 **To change a screen's styling, edit `src/pages/<Page>.css` directly.** Only run
 `npm run scope-css` if you changed the original mockup — it overwrites those
 five files. `PackagesCatalogue.css` is hand-written and is never regenerated.
+
+> **Do not run `npm run scope-css` to pick up a design change.** It regenerates
+> those five files from the *original* mockups, which still carry the old
+> palette, the gradient hero and the glass search bar — it would undo the
+> design-system pass described above. It is only for a structural change made
+> in a mockup, and after running it the token blocks have to be re-aliased.
 
 ### Why the shared components' CSS looks over-qualified
 
