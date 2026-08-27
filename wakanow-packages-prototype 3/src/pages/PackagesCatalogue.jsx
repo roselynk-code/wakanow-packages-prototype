@@ -63,7 +63,23 @@ export default function PackagesCatalogue() {
               </a>
             ))}
           </div>
-          <span className="navauth">Log in</span>
+          {/* Locale cluster plus the single orange account pill — the live
+              wakanow.com header, ported from LandingPage.jsx. */}
+          <div className="navauth">
+            <div className="navloc">
+              <span className="navflag" aria-hidden="true">
+                <i /><i /><i />
+              </span>
+              <span>EN</span>
+              <span className="navcart" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 8h14l-1.2 11.2A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-2-1.8L5 8z" />
+                  <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+                </svg>
+              </span>
+            </div>
+            <button type="button" className="btn-orange">Log in/Sign up</button>
+          </div>
         </div>
       </nav>
 
@@ -74,6 +90,10 @@ export default function PackagesCatalogue() {
       />
 
       <div className="wrap">
+        {/* Sections on wakanow.com are white rounded panels floating on the grey
+            page. The header, date strip, filters and sort row are one section
+            and share this panel; the listing grid below stays on the grey. */}
+        <div className="panel">
         <header className="cathead">
           <h1>Ready-made trips, priced for your dates</h1>
           <p>
@@ -131,6 +151,7 @@ export default function PackagesCatalogue() {
             </select>
           </label>
         </div>
+        </div>
 
         <div className="grid">
           {shown.length === 0 && (
@@ -168,7 +189,7 @@ function PackageCard({ pkg, departDate, onOpen }) {
 
   return (
     <button type="button" className="card" onClick={onOpen}>
-      <div className="plate" style={{ background: pkg.plate }}>
+      <div className="plate" style={{ background: pkg.gradient }}>
         <span className="savebadge">Save {nairaShort(save)}</span>
         <span className="country">{pkg.country}</span>
         <span className="place">{pkg.city}</span>

@@ -20,7 +20,7 @@
    from the numbered chips it precedes rather than looking like a sixth one. */
 .pg-builder .rail .stp.stp:not([role]) {
   background: transparent;
-  color: var(--wkn-ink-900);
+  color: #0d1520;
   font-weight: 800;
   letter-spacing: 0.3px;
   padding-left: 4px;

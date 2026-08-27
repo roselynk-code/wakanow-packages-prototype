@@ -54,7 +54,21 @@ export default function SearchResults() {
               </a>
             ))}
           </div>
-          <span className="navauth">Log in</span>
+          <div className="navauth">
+            <div className="navloc">
+              <span className="navflag" aria-hidden="true">
+                <i /><i /><i />
+              </span>
+              <span>EN</span>
+              <span className="navcart" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 8h14l-1.2 11.2A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-2-1.8L5 8z" />
+                  <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+                </svg>
+              </span>
+            </div>
+            <button className="btn-orange">Log in/Sign up</button>
+          </div>
         </div>
       </nav>
 
@@ -96,6 +110,9 @@ export default function SearchResults() {
 
       <section className="tierzone">
         <div className="wrap">
+          {/* Sections on wakanow.com are white rounded panels floating on the
+              grey page rather than content sitting straight on it. */}
+          <div className="panel">
           <div className="tierhead">
             <h1>Your {search.toCity} trip, three ways</h1>
             <p>Built just now from live prices for your dates. Pick one, or build your own below.</p>
@@ -157,6 +174,7 @@ export default function SearchResults() {
                 </article>
               );
             })}
+          </div>
           </div>
 
           <div className="curated">

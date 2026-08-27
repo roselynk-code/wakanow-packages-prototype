@@ -44,11 +44,38 @@ const DEST_CHIPS = [
 
 function ShareIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="var(--wkn-blue-700)" strokeWidth="2" strokeLinecap="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#004BBE" strokeWidth="2" strokeLinecap="round">
       <circle cx="18" cy="5" r="3" />
       <circle cx="6" cy="12" r="3" />
       <circle cx="18" cy="19" r="3" />
       <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+    </svg>
+  );
+}
+
+/* wakanow.com's product rail sits on top of the search card. Packages is the
+   live tab here; the rest are shown so the widget reads as the site's, and are
+   inert because this prototype only covers Packages. */
+const PRODUCT_TABS = [
+  { id: 'flights', label: 'Flights', d: 'M2 14l20-8-6 14-3-5-5-2z' },
+  { id: 'hotels', label: 'Hotels', d: 'M3 20V6h8v6h10v8M3 12h8M7 9h.01' },
+  { id: 'packages', label: 'Packages', d: 'M3 8h18v12H3zM8 8V5a2 2 0 012-2h4a2 2 0 012 2v3' },
+  { id: 'tours', label: 'Tours', d: 'M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z M12 10h.01' },
+  { id: 'visa', label: 'Visa', d: 'M3 6h18v12H3zM3 10h18M7 14h4' },
+  { id: 'extras', label: 'Travel Add-ons', d: 'M12 5v14M5 12h14' },
+];
+
+const TRUST = [
+  { value: '2M+', label: 'travellers', d: 'M16 20v-2a4 4 0 00-8 0v2M12 11a4 4 0 100-8 4 4 0 000 8z' },
+  { value: '24/7', label: 'support', d: 'M4 14v-3a8 8 0 1116 0v3M4 14a2 2 0 002 2h1v-5H6a2 2 0 00-2 2zm16 0a2 2 0 01-2 2h-1v-5h1a2 2 0 012 2z' },
+  { value: 'IATA', label: 'certified', d: 'M12 3l8 3v5c0 4.5-3.3 8.6-8 10-4.7-1.4-8-5.5-8-10V6z' },
+  { value: 'Flexible', label: 'payment', d: 'M3 7h18v10H3zM3 11h18' },
+];
+
+function TabIcon({ d }) {
+  return (
+    <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
     </svg>
   );
 }
@@ -119,8 +146,19 @@ export default function LandingPage() {
             <a href="#" onClick={inert}>Business</a>
           </div>
           <div className="navauth">
-            <button className="btn-ghostw">Log in</button>
-            <button className="btn-orange">Sign up</button>
+            <div className="navloc">
+              <span className="navflag" aria-hidden="true">
+                <i /><i /><i />
+              </span>
+              <span>EN</span>
+              <span className="navcart" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 8h14l-1.2 11.2A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-2-1.8L5 8z" />
+                  <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+                </svg>
+              </span>
+            </div>
+            <button className="btn-orange">Log in/Sign up</button>
           </div>
         </div>
       </nav>
@@ -128,18 +166,47 @@ export default function LandingPage() {
       <header className="hero">
         <div className="wrap">
           <div className="heroline">
+            <span className="eyebrow">Your travel shop for the world</span>
             <h1>
               Build your trip. <em>Pay less</em> than booking each part.
             </h1>
-            <div className="trustpills">
-              <span className="tp">No enquiry forms</span>
-              <span className="tp">Named airlines & hotels</span>
-              <span className="tp">Pay Small Small</span>
+            <p className="herosub">
+              Flight, stay, transfers and tours in one price — no enquiry forms, and you
+              can pay in instalments with Pay Small Small.
+            </p>
+            <div className="trustrow">
+              {TRUST.map(({ value, label, d }, i) => (
+                <span className="tr" key={value}>
+                  {i > 0 && <span className="trdot">·</span>}
+                  <TabIcon d={d} />
+                  <b>{value}</b> {label}
+                </span>
+              ))}
             </div>
           </div>
 
+          <div className="searchbox">
+            <div className="prodtabs" role="tablist" aria-label="Product">
+              {PRODUCT_TABS.map(({ id, label, d }) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={id === 'packages'}
+                  className={id === 'packages' ? 'ptab on' : 'ptab'}
+                  onClick={inert}
+                >
+                  <TabIcon d={d} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
           <div className="search">
             <div className="comps">
+              {/* The site's segmented control: pills inside a single grey
+                  track. The cabin select is a sibling of the track, not a
+                  member of it. */}
+              <div className="comptrack">
               {COMPONENTS.map(({ key, icon, label }) => {
                 const on = search.components[key];
                 return (
@@ -153,6 +220,7 @@ export default function LandingPage() {
                   </button>
                 );
               })}
+              </div>
               <select
                 className="cabinsel"
                 aria-label="Cabin"
@@ -251,11 +319,15 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
+          </div>
         </div>
       </header>
 
       <section className="blk">
         <div className="wrap">
+          {/* Sections on wakanow.com are white rounded panels floating on the
+              grey page rather than content sitting straight on it. */}
+          <div className="panel">
           <div className="secintro">
             <h2>Start from a ready-made trip</h2>
             <button className="seeall" onClick={() => navigate('/packages')}>
@@ -289,7 +361,7 @@ export default function LandingPage() {
                 // The whole card is clickable for convenience; the CTA below is the
                 // keyboard- and screen-reader-reachable control for the same action.
                 <article className="card" key={pkg.slug} onClick={() => navigate(route)}>
-                  <div className="plate" style={{ background: pkg.plate }}>
+                  <div className="plate" style={{ background: pkg.gradient }}>
                     <button
                       className="sharebtn"
                       aria-label="Share"
@@ -300,9 +372,12 @@ export default function LandingPage() {
                     <span className="savebadge">{`Save ${nairaShort(save)}`}</span>
                   </div>
                   <div className="cbody">
+                    {/* Blue uppercase eyebrow above the name — the live site's
+                        card pattern ("443+ HOTELS" over "Dubai"). */}
+                    <div className="ceyebrow">{`${pkg.nights} nights · ${pkg.country}`}</div>
                     <h3>{pkg.name}</h3>
                     <div className="dur">
-                      {`${pkg.nights} nights · ${formatRange(
+                      {`${formatRange(
                         search.departDate,
                         addDays(search.departDate, pkg.nights),
                       )} · from ${search.fromCity}`}
@@ -351,6 +426,39 @@ export default function LandingPage() {
               Nothing featured for {destChip} yet — see all packages for more.
             </p>
           )}
+          </div>
+
+          {/* The site's promo band: deep navy panel, two-column checklist, an
+              inset fare row, and the one solid orange button on the page. */}
+          <div className="prime">
+            <h2>Save up to 20% on every package</h2>
+            <p>
+              Join Wakanow Prime and unlock member fares on flights, hotels and holiday
+              packages. Average members save ₦180,000 a year.
+            </p>
+            <div className="primeticks">
+              {[
+                'Up to 20% off flights & hotels',
+                'Priority customer support',
+                'Free cancellation on select bookings',
+                'Early access to flash sales',
+              ].map((t) => (
+                <span className="ptick" key={t}>
+                  <i>✓</i>
+                  {t}
+                </span>
+              ))}
+            </div>
+            <div className="primefare">
+              <span className="rt">Lagos → Dubai</span>
+              <span className="old">₦385,000</span>
+              <span className="new">₦308,000</span>
+              <span className="sv">Save ₦77K</span>
+            </div>
+            <button className="primecta" onClick={inert}>
+              Join Wakanow Prime
+            </button>
+          </div>
         </div>
       </section>
 

@@ -425,7 +425,23 @@ export default function PackageBuilder() {
           <Link to="/" className="logo">
             waka<i>now</i>
           </Link>
-          <span className="navr">Log in</span>
+          {/* The site's header control set, same markup as the landing page:
+              locale cluster, then a single orange account pill. */}
+          <div className="navauth">
+            <div className="navloc">
+              <span className="navflag" aria-hidden="true">
+                <i /><i /><i />
+              </span>
+              <span>EN</span>
+              <span className="navcart" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 8h14l-1.2 11.2A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-2-1.8L5 8z" />
+                  <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+                </svg>
+              </span>
+            </div>
+            <button className="btn-orange">Log in/Sign up</button>
+          </div>
         </div>
       </nav>
 

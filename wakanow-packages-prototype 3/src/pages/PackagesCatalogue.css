@@ -3,35 +3,45 @@
    a browse view with larger cards than the landing page's four-up strip. */
 
 .pg-catalogue {
-  /* Local names kept, values re-pointed at the design system (src/theme.css). */
-  --brand-500: var(--wkn-blue-700);
-  --brand-600: var(--wkn-blue-800);
-  --brand-800: var(--wkn-blue-800);
-  --brand-900: var(--wkn-blue-900);
-  --accent-400: var(--wkn-orange-600);
-  --surface-page: var(--wkn-ink-50);
-  --text-primary: var(--wkn-ink-900);
-  --text-secondary: var(--wkn-ink-600);
-  --text-muted: var(--wkn-ink-500);
-  --ok: var(--wkn-success);
-  --ok-bg: var(--wkn-success-bg);
-  --ok-border: var(--ds-success-border);
-  --deal: var(--ds-deal);
-  --deal-bg: var(--ds-deal-bg);
-  --border-default: var(--wkn-ink-150);
-  --border-medium: var(--wkn-ink-300);
-  --font-heading: var(--font-sans);
-  --font-body: var(--font-sans);
-  --r-button: var(--radius-md);
-  --r-card: var(--radius-lg);
-  --r-pill: var(--radius-pill);
-  --sh-card: var(--shadow-sm);
-  --sh-hover: var(--shadow-md);
+  --brand-500: #004bbe;
+  --brand-600: #003d9c;
+  --brand-800: #002059;
+  --brand-900: #001845;
+  --accent-400: #f7941d;
+  --surface-page: #f2f6f9;
+  --text-primary: #0d1520;
+  --text-secondary: #4a6078;
+  --text-muted: #6b8096;
+  --ok: #0d7a45;
+  --ok-bg: #ebf7f2;
+  --ok-border: #b3dfc9;
+  --deal: #d93b10;
+  --deal-bg: #fef1ed;
+  --border-default: #ebf0f5;
+  --border-medium: #bfd0dc;
+  --font-heading: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --r-button: 8px;
+  --r-card: 14px;
+  --r-pill: 999px;
+  --sh-card: 0 1px 2px rgba(0, 20, 51, 0.04), 0 2px 8px rgba(0, 20, 51, 0.06);
+  --sh-hover: 0 8px 28px rgba(0, 20, 51, 0.12);
 
   background: var(--surface-page);
   color: var(--text-primary);
   font-family: var(--font-body);
   min-height: 100vh;
+}
+
+/* Rule 4 asks that this page's card radius, border, shadow and hover match the
+   landing page's `.card`. Two of this page's tokens were off that reference
+   (--r-card was 14px against the site's measured 12px, and --sh-hover was a
+   heavier 8/28 shadow). They are re-pointed HERE rather than in the token block
+   above, which the brief marks as not to be edited — same specificity, later in
+   the file, so it wins, and it is one deletable rule if it is not wanted. */
+.pg-catalogue {
+  --r-card: 12px;
+  --sh-hover: 0 4px 16px rgba(0, 20, 51, 0.1);
 }
 
 .pg-catalogue *,
@@ -46,46 +56,88 @@
 
 .pg-catalogue .wrap { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
 
-/* nav — matches the other screens: a WHITE surface with a hairline bottom
-   border, logo in brand blue with the orange `i`, active tab underlined in
-   orange. Same treatment as LandingPage.css; .navauth is plain text here,
-   so it takes secondary ink rather than the ghost/solid button pair. */
-.pg-catalogue .nav { background: var(--wkn-white); border-bottom: 1px solid var(--wkn-ink-200); height: 56px; display: flex; align-items: center; }
+/* ───── NAV ─────
+   Ported from LandingPage.css so the two screens carry one header: solid
+   #002059 bar, links at rgba(255,255,255,.75) 14px/500 in 8px 14px hit areas,
+   a locale cluster (flag / EN / cart) and a single ORANGE account pill. The
+   brief describes the live bar as 64px; the landing page — named as the
+   reference for every pattern — runs 56px, so 56px is kept here for parity
+   across the prototype. */
+.pg-catalogue .nav { background: var(--brand-800); height: var(--nav-h); display: flex; align-items: center; }
 .pg-catalogue .nav .wrap { display: flex; align-items: center; gap: 28px; width: 100%; }
 .pg-catalogue .logo {
-  font-family: var(--font-heading); font-weight: 800; font-size: 19px;
-  color: var(--brand-500); letter-spacing: -0.5px; background: none; padding: 0;
+  font-family: var(--font-heading); font-weight: 800; font-size: 21px;
+  color: #fff; letter-spacing: -0.6px; background: none; padding: 0;
 }
 .pg-catalogue .logo i { color: var(--accent-400); font-style: normal; }
-.pg-catalogue .navlinks { display: flex; gap: 22px; margin-right: auto; }
+.pg-catalogue .navlinks { display: flex; gap: 2px; margin-right: auto; }
 .pg-catalogue .navlinks a {
-  color: var(--text-primary); text-decoration: none; font-size: 14px; font-weight: 500;
-  padding: 17px 0; border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.75); text-decoration: none;
+  font-size: 14px; font-weight: 500;
+  padding: 8px 14px; border-radius: var(--r-small);
+  transition: background 0.15s ease-out, color 0.15s ease-out;
 }
-.pg-catalogue .navlinks a:hover { color: var(--brand-500); }
-.pg-catalogue .navlinks a.on { color: var(--brand-500); font-weight: 600; border-bottom-color: var(--accent-400); }
-.pg-catalogue .navauth { color: var(--text-secondary); font-size: 13px; }
+.pg-catalogue .navlinks a:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.pg-catalogue .navlinks a.on { color: #fff; font-weight: 600; }
+
+.pg-catalogue .navauth { display: flex; gap: 14px; align-items: center; }
+/* Locale cluster — flag, language, cart — sits left of the account pill. */
+.pg-catalogue .navloc {
+  display: flex; align-items: center; gap: 12px;
+  color: rgba(255, 255, 255, 0.75); font-size: 13px; font-weight: 500;
+}
+.pg-catalogue .navflag {
+  width: 22px; height: 22px; border-radius: 50%; overflow: hidden;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; flex-shrink: 0;
+}
+.pg-catalogue .navflag i { display: block; font-style: normal; }
+.pg-catalogue .navflag i:nth-child(1),
+.pg-catalogue .navflag i:nth-child(3) { background: #008751; }
+.pg-catalogue .navflag i:nth-child(2) { background: #fff; }
+.pg-catalogue .navcart { width: 22px; height: 22px; color: rgba(255, 255, 255, 0.8); }
+.pg-catalogue .navcart svg { width: 100%; height: 100%; }
+.pg-catalogue .btn-orange {
+  background: var(--accent-400); color: #fff; border-radius: var(--r-pill);
+  padding: 9px 18px; font-size: 13.5px; font-weight: 700;
+  box-shadow: var(--shadow-cta-orange);
+}
+.pg-catalogue .btn-orange:hover { background: #e08213; }
+
+/* ───── SECTION PANEL ─────
+   Rule 3: a content section on wakanow.com is a white rounded panel floating on
+   the grey page. The page header, the date strip, the vibe filters and the
+   count/sort row are one section and share this panel; the listing grid below
+   stays directly on the grey, since a full listing is not panelled on the live
+   site. */
+.pg-catalogue .panel {
+  background: #fff; border: 1px solid var(--border-default);
+  border-radius: var(--r-card); box-shadow: var(--sh-card);
+  padding: 28px 24px; margin: 22px 0 20px;
+}
 
 /* header */
-.pg-catalogue .cathead { padding: 26px 0 4px; }
-.pg-catalogue .cathead h1 { font-size: 27px; font-weight: 800; letter-spacing: -0.8px; text-wrap: balance; }
-.pg-catalogue .cathead p { font-size: 13.5px; color: var(--text-muted); margin: 6px 0 0; max-width: 62ch; line-height: 20px; }
+.pg-catalogue .cathead { padding: 0; }
+.pg-catalogue .cathead h1 { font-size: 38px; font-weight: 800; letter-spacing: -1.3px; line-height: 1.08; text-wrap: balance; }
+.pg-catalogue .cathead p { font-size: 14px; color: var(--text-muted); margin: 10px 0 0; max-width: 62ch; line-height: 21px; }
 
-/* the date context strip — the whole point is that these cards move with it */
+/* the date context strip — the whole point is that these cards move with it.
+   Inside the white panel it reads as an inset rather than as its own floating
+   card, so it takes the page grey and drops the card shadow. */
 .pg-catalogue .datestrip {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  margin: 16px 0 18px; padding: 12px 16px;
-  background: #fff; border: 1px solid var(--border-default);
+  margin: 20px 0 18px; padding: 12px 16px;
+  background: var(--surface-page); border: 1px solid var(--border-default);
   border-left: 4px solid var(--accent-400);
-  border-radius: var(--r-card); box-shadow: var(--sh-card);
+  border-radius: var(--r-button);
 }
 .pg-catalogue .datestrip .dl {
   font-size: 9px; font-weight: 700; letter-spacing: 0.8px;
   text-transform: uppercase; color: var(--text-muted); display: block;
 }
 .pg-catalogue .datestrip .dv { font-family: var(--font-heading); font-size: 14px; font-weight: 700; display: block; }
+/* The strip is now grey, so the trigger inverts to white to stay a field. */
 .pg-catalogue .datefield {
-  background: var(--surface-page); border: 1px solid var(--border-medium);
+  background: #fff; border: 1px solid var(--border-medium);
   border-radius: var(--r-button); padding: 7px 12px; text-align: left;
 }
 .pg-catalogue .datefield:hover { border-color: var(--brand-500); }
@@ -94,21 +146,23 @@
 
 /* filters */
 .pg-catalogue .vibes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+/* Matched to the landing page's `.dc` chips: hairline resting border that
+   firms up on hover, rather than a heavy one at rest. */
 .pg-catalogue .vibe {
-  background: #fff; border: 1px solid var(--border-medium); color: var(--text-secondary);
-  font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: var(--r-pill);
+  background: #fff; border: 1px solid var(--border-subtle, #dde7ef); color: var(--text-secondary);
+  font-size: 13px; font-weight: 500; padding: 7px 15px; border-radius: var(--r-pill);
 }
-.pg-catalogue .vibe:hover { border-color: var(--brand-500); color: var(--brand-500); }
+.pg-catalogue .vibe:hover { border-color: var(--border-medium); color: var(--text-primary); }
 .pg-catalogue .vibe.on { background: var(--brand-500); border-color: var(--brand-500); color: #fff; font-weight: 600; }
 
 .pg-catalogue .countrow {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 0;
 }
-.pg-catalogue .count { font-size: 12px; color: var(--text-muted); margin: 0; }
+.pg-catalogue .count { font-size: 13px; color: var(--text-muted); margin: 0; }
 .pg-catalogue .sortlab {
   display: inline-flex; align-items: center; gap: 8px;
-  font-size: 12px; color: var(--text-muted);
+  font-size: 13px; color: var(--text-muted);
 }
 .pg-catalogue .sortsel {
   font-family: var(--font-body); font-size: 12.5px; font-weight: 600;
@@ -126,13 +180,15 @@
   padding-bottom: 40px;
 }
 
+/* Rule 4: hairline border, card radius, card shadow, and a -2px lift on hover —
+   the same four values as the landing page's `.card`. */
 .pg-catalogue .card {
-  background: #fff; border-radius: var(--r-card); box-shadow: var(--sh-card);
+  background: #fff; border: 1px solid var(--border-default);
+  border-radius: var(--r-card); box-shadow: var(--sh-card);
   overflow: hidden; display: flex; flex-direction: column;
   text-align: left; padding: 0; width: 100%;
   transition: box-shadow 0.2s, transform 0.2s;
 }
-/* Card hover: 2px lift plus one elevation step (--sh-card → --sh-hover). */
 .pg-catalogue .card:hover { box-shadow: var(--sh-hover); transform: translateY(-2px); }
 
 .pg-catalogue .plate { height: 168px; position: relative; flex-shrink: 0; }
@@ -153,9 +209,12 @@
 }
 
 .pg-catalogue .cbody { padding: 14px 16px 16px; display: flex; flex-direction: column; flex: 1; }
-.pg-catalogue .cbody h3 { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; line-height: 21px; }
-.pg-catalogue .when { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
-.pg-catalogue .blurb { font-size: 12.5px; color: var(--text-secondary); line-height: 18px; margin: 8px 0 0; }
+/* Rule 5 / rule 4: the site's card name is 700, not 800. The landing grid is
+   four-up at 15px; this grid is three-up on a wider plate, so 17px holds the
+   same optical weight against the bigger card. */
+.pg-catalogue .cbody h3 { font-size: 17px; font-weight: 700; letter-spacing: -0.34px; line-height: 22px; }
+.pg-catalogue .when { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.pg-catalogue .blurb { font-size: 13px; color: var(--text-secondary); line-height: 19px; margin: 8px 0 0; }
 
 .pg-catalogue .ops { margin: 10px 0 0; display: flex; flex-direction: column; gap: 5px; }
 .pg-catalogue .op { font-size: 12px; color: var(--text-secondary); line-height: 16px; display: flex; gap: 7px; }
@@ -163,11 +222,11 @@
 .pg-catalogue .op .oi { width: 15px; flex-shrink: 0; }
 
 .pg-catalogue .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
-.pg-catalogue .tag { background: var(--wkn-blue-100); color: var(--brand-500); font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: var(--r-pill); }
+.pg-catalogue .tag { background: #eef5ff; color: var(--brand-500); font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: var(--r-pill); }
 .pg-catalogue .tag.visa { background: var(--surface-page); color: var(--text-secondary); font-weight: 500; }
 .pg-catalogue .tag.novisa { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
 
-.pg-catalogue .ledger { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--border-medium); }
+.pg-catalogue .ledger { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-default); }
 .pg-catalogue .ledger .was { font-size: 11px; color: var(--text-muted); text-decoration: line-through; }
 .pg-catalogue .ledger .nowrow { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; }
 .pg-catalogue .ledger .now { font-family: var(--font-heading); font-size: 21px; font-weight: 800; letter-spacing: -0.6px; font-variant-numeric: tabular-nums; }
@@ -175,18 +234,20 @@
 .pg-catalogue .ledger .save { font-size: 11.5px; color: var(--ok); font-weight: 600; margin-top: 2px; }
 
 /* Rendered as a span inside the card button — it reads as the primary action
-   without nesting one interactive element inside another. */
+   without nesting one interactive element inside another.
+   Rule 1: this is the card's primary verb, so it is BLUE. Orange on wakanow.com
+   is spent on the account pill, Prime and promo accents only; an orange button
+   here would read as a promotion. Matched to the landing page's card `.cta`,
+   which carries no drop shadow inside the card. */
 .pg-catalogue .cta {
   display: block; text-align: center;
-  margin-top: 12px; background: var(--accent-400); color: #fff; width: 100%;
-  border-radius: var(--r-button); padding: 10px; font-size: 13px; font-weight: 700;
-  /* Accent glow re-mixed on the system accent (--wkn-orange-600 #f58220),
-     matching the --sh-orange token the sibling screens carry. */
-  box-shadow: 0 4px 14px rgba(245, 130, 32, 0.30);
+  margin-top: 12px; background: var(--brand-500); color: #fff; width: 100%;
+  border-radius: var(--r-button); padding: 11px; font-size: 13.5px; font-weight: 600;
+  transition: background 0.15s ease-out;
 }
-/* Primary hover darkens one rung (orange-600 → orange-700) — the system
-   rules out filter:brightness() and scale-up hovers. */
-.pg-catalogue .cta:hover { background: var(--wkn-orange-700); }
+/* The CTA is a span, so the lit state belongs to the card that owns it. */
+.pg-catalogue .card:hover .cta,
+.pg-catalogue .cta:hover { background: var(--brand-600); }
 
 /* empty state */
 .pg-catalogue .empty {
@@ -195,7 +256,7 @@
 }
 .pg-catalogue .empty p { font-size: 13px; color: var(--text-muted); margin: 0 0 10px; }
 .pg-catalogue .empty button { background: var(--brand-500); color: #fff; border-radius: var(--r-button); padding: 9px 18px; font-size: 12.5px; font-weight: 600; }
-.pg-catalogue .empty button:hover { background: var(--wkn-blue-800); }
+.pg-catalogue .empty button:hover { background: var(--brand-600); }
 
 .pg-catalogue footer {
   padding: 18px 0; border-top: 1px solid var(--border-default);
@@ -204,11 +265,14 @@
 
 @media (max-width: 1080px) {
   .pg-catalogue .grid { grid-template-columns: repeat(2, 1fr); }
+  .pg-catalogue .cathead h1 { font-size: 30px; letter-spacing: -0.9px; }
 }
 @media (max-width: 680px) {
   .pg-catalogue .grid { grid-template-columns: 1fr; }
-  .pg-catalogue .navlinks { display: none; }
-  .pg-catalogue .cathead h1 { font-size: 22px; }
+  .pg-catalogue .navlinks,
+  .pg-catalogue .navloc { display: none; }
+  .pg-catalogue .cathead h1 { font-size: 26px; letter-spacing: -0.7px; }
+  .pg-catalogue .panel { padding: 20px 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pg-catalogue .card { transition: none; }
