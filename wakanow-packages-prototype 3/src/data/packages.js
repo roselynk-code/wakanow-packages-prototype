@@ -16,34 +16,7 @@
 
 import { expandVariants } from './variants.js';
 
-/* Destination plates.
- *
- * These stand in for the destination photography the design system calls its
- * number-one hero motif; until real imagery lands in the package, each is one
- * FLAT colour. The system rules gradients out everywhere — "no bluish-purple
- * gradients, no mesh, no patterns" — and a plate may only draw on the two
- * brand ramps, which is why there is no green Zanzibar or maroon Istanbul.
- *
- * CARD is a six-colour cycle. The catalogue lays out three across, so a
- * six-cycle guarantees no two plates touch each other either horizontally or
- * vertically, and the landing strip's first four are all distinct too.
- *
- * SHOTS walks each card colour down its own ramp, so a destination's five
- * gallery tiles read as one set rather than five unrelated blocks.
- */
-const CARD = ['#0b4fa8', '#d97315', '#062e66', '#1364c7', '#b45b0e', '#083e85'];
-
-const SHOTS = {
-  '#0b4fa8': ['#0b4fa8', '#083e85', '#062e66', '#1364c7', '#2f84e3'],
-  '#d97315': ['#d97315', '#b45b0e', '#7f3f06', '#f58220', '#d97315'],
-  '#062e66': ['#062e66', '#0b4fa8', '#083e85', '#1364c7', '#062e66'],
-  '#1364c7': ['#1364c7', '#0b4fa8', '#083e85', '#2f84e3', '#062e66'],
-  '#b45b0e': ['#b45b0e', '#7f3f06', '#d97315', '#f58220', '#b45b0e'],
-  '#083e85': ['#083e85', '#062e66', '#0b4fa8', '#1364c7', '#2f84e3'],
-};
-
-const plate = (i) => CARD[i % CARD.length];
-const shot = (i, n) => SHOTS[CARD[i % CARD.length]][n % 5];
+const g = (a, b, c) => `linear-gradient(150deg, ${a}, ${b} 55%, ${c})`;
 
 /* ── The four authored packages ─────────────────────────────────────────── */
 
@@ -58,13 +31,13 @@ const DUBAI = {
   visa: 'add-on',
   freeCancelDays: 16,
   blurb: 'Downtown base, direct flights and the desert an hour away.',
-  plate: plate(0),
+  gradient: g('#0B3C8C', '#1C7FD6', '#F7941D'),
   gallery: [
-    { caption: 'Downtown Dubai', plate: shot(0, 0), skyline: true },
-    { caption: 'Rove Downtown — deluxe room', plate: shot(0, 1) },
-    { caption: 'Rooftop pool', plate: shot(0, 2) },
-    { caption: 'Emirates cabin', plate: shot(0, 3) },
-    { caption: 'Desert safari', plate: shot(0, 4) },
+    { caption: 'Downtown Dubai', gradient: g('#0B3C8C', '#1C7FD6', '#F7941D'), skyline: true },
+    { caption: 'Rove Downtown — deluxe room', gradient: 'linear-gradient(150deg,#123A6B,#3E86C8)' },
+    { caption: 'Rooftop pool', gradient: 'linear-gradient(150deg,#1C3E6B,#C99A55)' },
+    { caption: 'Emirates cabin', gradient: 'linear-gradient(150deg,#08304F,#4E7FB4)' },
+    { caption: 'Desert safari', gradient: 'linear-gradient(150deg,#12325C,#E09A45)' },
   ],
   flights: [
     {
@@ -155,13 +128,13 @@ const LONDON = {
   visa: 'required',
   freeCancelDays: 21,
   blurb: 'Westminster base, walkable to the West End and the river.',
-  plate: plate(1),
+  gradient: g('#152A4A', '#3E5F86', '#8FA9C4'),
   gallery: [
-    { caption: 'The South Bank', plate: shot(1, 0) },
-    { caption: 'Park Plaza Westminster — river room', plate: shot(1, 1) },
-    { caption: 'Borough Market', plate: shot(1, 2) },
-    { caption: 'Air Peace cabin', plate: shot(1, 3) },
-    { caption: 'West End evening', plate: shot(1, 4) },
+    { caption: 'The South Bank', gradient: g('#152A4A', '#3E5F86', '#8FA9C4') },
+    { caption: 'Park Plaza Westminster — river room', gradient: 'linear-gradient(150deg,#1E3350,#5A7796)' },
+    { caption: 'Borough Market', gradient: 'linear-gradient(150deg,#3A2A1E,#8A6B4A)' },
+    { caption: 'Air Peace cabin', gradient: 'linear-gradient(150deg,#10243D,#3E6187)' },
+    { caption: 'West End evening', gradient: 'linear-gradient(150deg,#2A1E3A,#7A5A96)' },
   ],
   flights: [
     { id: 'ap', name: 'Air Peace · direct both ways', desc: 'LOS 23:30 → LHR 06:10 · 6h 40m · 2 bags', meta: 'Lagos (LOS) → London Heathrow (LHR) · Economy · 2 checked bags', price: 1560000, separate: 1716000, eligible: true },
@@ -200,13 +173,13 @@ const ISTANBUL = {
   visa: 'add-on',
   freeCancelDays: 14,
   blurb: 'Old city on foot, the Bosphorus by boat, four nights is enough.',
-  plate: plate(2),
+  gradient: g('#5A1A2E', '#B03A4E', '#F0A868'),
   gallery: [
-    { caption: 'Sultanahmet at dusk', plate: shot(2, 0) },
-    { caption: 'Ramada Old City — deluxe room', plate: shot(2, 1) },
-    { caption: 'The Grand Bazaar', plate: shot(2, 2) },
-    { caption: 'Bosphorus ferry', plate: shot(2, 3) },
-    { caption: 'Meze and raki', plate: shot(2, 4) },
+    { caption: 'Sultanahmet at dusk', gradient: g('#5A1A2E', '#B03A4E', '#F0A868') },
+    { caption: 'Ramada Old City — deluxe room', gradient: 'linear-gradient(150deg,#4A2030,#96505E)' },
+    { caption: 'The Grand Bazaar', gradient: 'linear-gradient(150deg,#3A2A14,#B08A46)' },
+    { caption: 'Bosphorus ferry', gradient: 'linear-gradient(150deg,#14304A,#4A7A9E)' },
+    { caption: 'Meze and raki', gradient: 'linear-gradient(150deg,#2A3A1E,#7A9650)' },
   ],
   flights: [
     { id: 'tk', name: 'Turkish Airlines · direct both ways', desc: 'LOS 21:40 → IST 05:30 · 6h 50m · 2 bags', meta: 'Lagos (LOS) → Istanbul (IST) · Economy · 2 checked bags', price: 902000, separate: 990000, eligible: true },
@@ -244,13 +217,13 @@ const UMRAH = {
   visa: 'included',
   freeCancelDays: 30,
   blurb: 'Ten nights across both cities, walking distance to the Haram.',
-  plate: plate(3),
+  gradient: g('#0C3B33', '#126B54', '#D4B15F'),
   gallery: [
-    { caption: 'The Haram at night', plate: shot(3, 0) },
-    { caption: 'Swissôtel Makkah — family room', plate: shot(3, 1) },
-    { caption: "Al-Masjid an-Nabawi, Madinah", plate: shot(3, 2) },
-    { caption: 'Saudia cabin', plate: shot(3, 3) },
-    { caption: 'Between the two cities', plate: shot(3, 4) },
+    { caption: 'The Haram at night', gradient: g('#0C3B33', '#126B54', '#D4B15F') },
+    { caption: 'Swissôtel Makkah — family room', gradient: 'linear-gradient(150deg,#123A32,#3E7A66)' },
+    { caption: "Al-Masjid an-Nabawi, Madinah", gradient: 'linear-gradient(150deg,#1E3A2E,#6B9A7A)' },
+    { caption: 'Saudia cabin', gradient: 'linear-gradient(150deg,#0E2A3A,#3E6A7E)' },
+    { caption: 'Between the two cities', gradient: 'linear-gradient(150deg,#3A3220,#A8925A)' },
   ],
   flights: [
     { id: 'sv', name: 'Saudia · 1 stop', desc: 'LOS 13:50 → JED 04:20 · 11h 30m · 2 bags · Zamzam allowance', meta: 'Lagos (LOS) → Jeddah (JED) · Economy · 2 checked bags · Zamzam allowance', price: 1268000, separate: 1395000, eligible: true },
@@ -285,13 +258,13 @@ const ZANZIBAR = {
   city: 'Zanzibar', code: 'ZNZ', country: 'Tanzania',
   nights: 7, vibes: ['Beach & Island', 'Romantic'], visa: 'add-on', freeCancelDays: 21,
   blurb: 'Seven nights on the north coast, with Stone Town on the way through.',
-  plate: plate(4),
+  gradient: g('#0A4A5C', '#1E9AA8', '#F2D08A'),
   gallery: [
-    { caption: 'Nungwi beach', plate: shot(4, 0) },
-    { caption: 'Zuri Zanzibar — garden villa', plate: shot(4, 1) },
-    { caption: 'Stone Town doorways', plate: shot(4, 2) },
-    { caption: 'Dhow at sunset', plate: shot(4, 3) },
-    { caption: 'Spice farm', plate: shot(4, 4) },
+    { caption: 'Nungwi beach', gradient: g('#0A4A5C', '#1E9AA8', '#F2D08A') },
+    { caption: 'Zuri Zanzibar — garden villa', gradient: 'linear-gradient(150deg,#0E4A44,#3E9A88)' },
+    { caption: 'Stone Town doorways', gradient: 'linear-gradient(150deg,#4A3220,#B08A5A)' },
+    { caption: 'Dhow at sunset', gradient: 'linear-gradient(150deg,#123A5C,#E09A6A)' },
+    { caption: 'Spice farm', gradient: 'linear-gradient(150deg,#1E3A1E,#6B9A4A)' },
   ],
   flights: [
     { id: 'kq', name: 'Kenya Airways · 1 stop Nairobi', desc: 'LOS 13:15 → ZNZ 06:50 · 12h 35m · 2 bags', meta: 'Lagos (LOS) → Nairobi (NBO) → Zanzibar (ZNZ) · Economy · 2 checked bags', price: 1180000, separate: 1295000, eligible: true },
@@ -324,13 +297,13 @@ const CAPETOWN = {
   city: 'Cape Town', code: 'CPT', country: 'South Africa',
   nights: 7, vibes: ['Adventure', 'Food & Nightlife'], visa: 'required', freeCancelDays: 21,
   blurb: 'The mountain, the peninsula and two days out in Stellenbosch.',
-  plate: plate(5),
+  gradient: g('#1A3A5C', '#3E7AA8', '#E8A05A'),
   gallery: [
-    { caption: 'Table Mountain from the bay', plate: shot(5, 0) },
-    { caption: 'The Silo — loft room', plate: shot(5, 1) },
-    { caption: 'Boulders Beach', plate: shot(5, 2) },
-    { caption: 'Stellenbosch vineyards', plate: shot(5, 3) },
-    { caption: 'V&A Waterfront', plate: shot(5, 4) },
+    { caption: 'Table Mountain from the bay', gradient: g('#1A3A5C', '#3E7AA8', '#E8A05A') },
+    { caption: 'The Silo — loft room', gradient: 'linear-gradient(150deg,#2A2A3A,#6B6B8A)' },
+    { caption: 'Boulders Beach', gradient: 'linear-gradient(150deg,#123A4A,#4A9AA8)' },
+    { caption: 'Stellenbosch vineyards', gradient: 'linear-gradient(150deg,#2A3A1E,#8A9A4A)' },
+    { caption: 'V&A Waterfront', gradient: 'linear-gradient(150deg,#1E2A4A,#5A6B9A)' },
   ],
   flights: [
     { id: 'sa', name: 'South African Airways · 1 stop Johannesburg', desc: 'LOS 08:40 → CPT 19:15 · 10h 35m · 2 bags', meta: 'Lagos (LOS) → Johannesburg (JNB) → Cape Town (CPT) · Economy · 2 checked bags', price: 1420000, separate: 1562000, eligible: true },
@@ -364,13 +337,13 @@ const SAFARI = {
   city: 'Masai Mara', code: 'NBO', country: 'Kenya',
   nights: 6, vibes: ['Safari & Nature', 'Adventure'], visa: 'add-on', freeCancelDays: 30,
   blurb: 'Two nights in the city, four in the Mara, light aircraft between them.',
-  plate: plate(6),
+  gradient: g('#4A3A14', '#A8823A', '#E8C46A'),
   gallery: [
-    { caption: 'The Mara at first light', plate: shot(6, 0) },
-    { caption: 'Mara Serena — tented room', plate: shot(6, 1) },
-    { caption: 'Game drive', plate: shot(6, 2) },
-    { caption: 'Light aircraft to the reserve', plate: shot(6, 3) },
-    { caption: 'Nairobi skyline', plate: shot(6, 4) },
+    { caption: 'The Mara at first light', gradient: g('#4A3A14', '#A8823A', '#E8C46A') },
+    { caption: 'Mara Serena — tented room', gradient: 'linear-gradient(150deg,#3A3220,#8A7A4A)' },
+    { caption: 'Game drive', gradient: 'linear-gradient(150deg,#2A3A1E,#7A9A4A)' },
+    { caption: 'Light aircraft to the reserve', gradient: 'linear-gradient(150deg,#1E3A4A,#5A8A9A)' },
+    { caption: 'Nairobi skyline', gradient: 'linear-gradient(150deg,#1E2A3A,#5A6B8A)' },
   ],
   flights: [
     { id: 'kq', name: 'Kenya Airways · direct both ways', desc: 'LOS 13:15 → NBO 22:05 · 5h 50m · 2 bags', meta: 'Lagos (LOS) → Nairobi (NBO) · Economy · 2 checked bags', price: 986000, separate: 1084000, eligible: true },
@@ -403,13 +376,13 @@ const ACCRA = {
   city: 'Accra', code: 'ACC', country: 'Ghana',
   nights: 3, vibes: ['City Break', 'Food & Nightlife'], visa: 'none', freeCancelDays: 7,
   blurb: 'Three nights, no visa, and a direct flight under an hour.',
-  plate: plate(7),
+  gradient: g('#5C2A14', '#C4703A', '#F2C46A'),
   gallery: [
-    { caption: 'Labadi beach', plate: shot(7, 0) },
-    { caption: 'Kempinski — deluxe room', plate: shot(7, 1) },
-    { caption: 'Jamestown', plate: shot(7, 2) },
-    { caption: 'Osu nightlife', plate: shot(7, 3) },
-    { caption: 'Makola market', plate: shot(7, 4) },
+    { caption: 'Labadi beach', gradient: g('#5C2A14', '#C4703A', '#F2C46A') },
+    { caption: 'Kempinski — deluxe room', gradient: 'linear-gradient(150deg,#3A2A1E,#8A6B4A)' },
+    { caption: 'Jamestown', gradient: 'linear-gradient(150deg,#4A3A2A,#A8825A)' },
+    { caption: 'Osu nightlife', gradient: 'linear-gradient(150deg,#2A1E3A,#7A5A96)' },
+    { caption: 'Makola market', gradient: 'linear-gradient(150deg,#3A3A1E,#9A9A4A)' },
   ],
   flights: [
     { id: 'aw', name: 'Africa World Airlines · direct both ways', desc: 'LOS 07:30 → ACC 08:15 · 55m · 1 bag', meta: 'Lagos (LOS) → Accra (ACC) · Economy · 1 checked bag', price: 312000, separate: 348000, eligible: true },
@@ -440,13 +413,13 @@ const CAIRO = {
   city: 'Cairo', code: 'CAI', country: 'Egypt',
   nights: 6, vibes: ['Culture & History', 'Family'], visa: 'add-on', freeCancelDays: 21,
   blurb: 'Pyramids from your window, and three nights on the river at Luxor.',
-  plate: plate(8),
+  gradient: g('#5C4A1E', '#B8923A', '#F2D48A'),
   gallery: [
-    { caption: 'Giza at sunrise', plate: shot(8, 0) },
-    { caption: 'Mena House — pyramid view room', plate: shot(8, 1) },
-    { caption: 'The Egyptian Museum', plate: shot(8, 2) },
-    { caption: 'Felucca on the Nile', plate: shot(8, 3) },
-    { caption: 'Khan el-Khalili', plate: shot(8, 4) },
+    { caption: 'Giza at sunrise', gradient: g('#5C4A1E', '#B8923A', '#F2D48A') },
+    { caption: 'Mena House — pyramid view room', gradient: 'linear-gradient(150deg,#4A3A20,#A8865A)' },
+    { caption: 'The Egyptian Museum', gradient: 'linear-gradient(150deg,#3A2A1E,#8A6B4A)' },
+    { caption: 'Felucca on the Nile', gradient: 'linear-gradient(150deg,#1E3A4A,#5A8AA8)' },
+    { caption: 'Khan el-Khalili', gradient: 'linear-gradient(150deg,#3A2014,#96543A)' },
   ],
   flights: [
     { id: 'ms', name: 'EgyptAir · direct both ways', desc: 'LOS 22:45 → CAI 05:30 · 5h 45m · 2 bags', meta: 'Lagos (LOS) → Cairo (CAI) · Economy · 2 checked bags', price: 848000, separate: 934000, eligible: true },
@@ -480,13 +453,13 @@ const DOHA = {
   city: 'Doha', code: 'DOH', country: 'Qatar',
   nights: 4, vibes: ['City Break', 'Culture & History'], visa: 'add-on', freeCancelDays: 14,
   blurb: 'Four nights, the museum, the souq and the dunes at Khor Al Adaid.',
-  plate: plate(9),
+  gradient: g('#3A1E4A', '#7A4A96', '#E8A05A'),
   gallery: [
-    { caption: 'The Corniche', plate: shot(9, 0) },
-    { caption: 'Mondrian Doha — studio', plate: shot(9, 1) },
-    { caption: 'Museum of Islamic Art', plate: shot(9, 2) },
-    { caption: 'Souq Waqif', plate: shot(9, 3) },
-    { caption: 'The inland sea', plate: shot(9, 4) },
+    { caption: 'The Corniche', gradient: g('#3A1E4A', '#7A4A96', '#E8A05A') },
+    { caption: 'Mondrian Doha — studio', gradient: 'linear-gradient(150deg,#2A1E3A,#6B4A8A)' },
+    { caption: 'Museum of Islamic Art', gradient: 'linear-gradient(150deg,#3A3A2A,#9A9A6B)' },
+    { caption: 'Souq Waqif', gradient: 'linear-gradient(150deg,#4A2A1E,#A86B4A)' },
+    { caption: 'The inland sea', gradient: 'linear-gradient(150deg,#5C4A2A,#E8C48A)' },
   ],
   flights: [
     { id: 'qr', name: 'Qatar Airways · direct both ways', desc: 'LOS 15:10 → DOH 01:20 · 7h 10m · 2 bags', meta: 'Lagos (LOS) → Doha (DOH) · Economy · 2 checked bags', price: 968000, separate: 1062000, eligible: true },
@@ -519,13 +492,13 @@ const MAURITIUS = {
   city: 'Mauritius', code: 'MRU', country: 'Mauritius',
   nights: 7, vibes: ['Beach & Island', 'Family'], visa: 'none', freeCancelDays: 30,
   blurb: 'Half board on the west coast, kids club included, no visa needed.',
-  plate: plate(10),
+  gradient: g('#0A4A4A', '#1E9A9A', '#F2D8A0'),
   gallery: [
-    { caption: 'Flic en Flac', plate: shot(10, 0) },
-    { caption: 'Sugar Beach — family suite', plate: shot(10, 1) },
-    { caption: 'Le Morne', plate: shot(10, 2) },
-    { caption: 'Catamaran day', plate: shot(10, 3) },
-    { caption: 'Chamarel', plate: shot(10, 4) },
+    { caption: 'Flic en Flac', gradient: g('#0A4A4A', '#1E9A9A', '#F2D8A0') },
+    { caption: 'Sugar Beach — family suite', gradient: 'linear-gradient(150deg,#0E4A44,#4A9A88)' },
+    { caption: 'Le Morne', gradient: 'linear-gradient(150deg,#1E3A2A,#6B9A6B)' },
+    { caption: 'Catamaran day', gradient: 'linear-gradient(150deg,#123A5C,#4A8AC4)' },
+    { caption: 'Chamarel', gradient: 'linear-gradient(150deg,#4A2A1E,#B8724A)' },
   ],
   flights: [
     { id: 'kq', name: 'Kenya Airways · 1 stop Nairobi', desc: 'LOS 13:15 → MRU 12:40 · 17h 25m · 2 bags', meta: 'Lagos (LOS) → Nairobi (NBO) → Mauritius (MRU) · Economy · 2 checked bags', price: 1344000, separate: 1478000, eligible: true },
@@ -558,13 +531,13 @@ const KIGALI = {
   city: 'Kigali', code: 'KGL', country: 'Rwanda',
   nights: 5, vibes: ['Safari & Nature', 'Adventure'], visa: 'none', freeCancelDays: 30,
   blurb: 'Two nights in Kigali, three at Volcanoes, permit sold separately.',
-  plate: plate(11),
+  gradient: g('#0C3A2A', '#1E7A56', '#C4D46A'),
   gallery: [
-    { caption: 'Volcanoes National Park', plate: shot(11, 0) },
-    { caption: 'The Retreat — garden room', plate: shot(11, 1) },
-    { caption: 'Kigali hills', plate: shot(11, 2) },
-    { caption: 'Tea plantations', plate: shot(11, 3) },
-    { caption: 'Lake Kivu', plate: shot(11, 4) },
+    { caption: 'Volcanoes National Park', gradient: g('#0C3A2A', '#1E7A56', '#C4D46A') },
+    { caption: 'The Retreat — garden room', gradient: 'linear-gradient(150deg,#123A2A,#4A8A66)' },
+    { caption: 'Kigali hills', gradient: 'linear-gradient(150deg,#1E3A3A,#5A8A8A)' },
+    { caption: 'Tea plantations', gradient: 'linear-gradient(150deg,#2A3A14,#7A9A3A)' },
+    { caption: 'Lake Kivu', gradient: 'linear-gradient(150deg,#123A4A,#4A8AA8)' },
   ],
   flights: [
     { id: 'wb', name: 'RwandAir · direct both ways', desc: 'LOS 11:20 → KGL 18:05 · 4h 45m · 2 bags', meta: 'Lagos (LOS) → Kigali (KGL) · Economy · 2 checked bags', price: 742000, separate: 816000, eligible: true },
@@ -608,13 +581,13 @@ const TIER_ESSENTIAL = {
   city: 'Dubai', code: 'DXB', country: 'United Arab Emirates',
   nights: 5, vibes: ['City Break'], visa: 'add-on', freeCancelDays: 16,
   blurb: 'Direct flight and a clean 3★ base. Nothing you will not use.',
-  plate: plate(12),
+  gradient: g('#2A3A4A', '#5A7A96', '#A8BECE'),
   gallery: [
-    { caption: 'Deira', plate: shot(12, 0) },
-    { caption: 'Rove City Centre — standard room', plate: shot(12, 1) },
-    { caption: 'City Centre metro', plate: shot(12, 2) },
-    { caption: 'Air Peace cabin', plate: shot(12, 3) },
-    { caption: 'The creek', plate: shot(12, 4) },
+    { caption: 'Deira', gradient: g('#2A3A4A', '#5A7A96', '#A8BECE') },
+    { caption: 'Rove City Centre — standard room', gradient: 'linear-gradient(150deg,#2A3A4A,#5A7A96)' },
+    { caption: 'City Centre metro', gradient: 'linear-gradient(150deg,#1E2A3A,#4A5A7A)' },
+    { caption: 'Air Peace cabin', gradient: 'linear-gradient(150deg,#123A4A,#3E7A8A)' },
+    { caption: 'The creek', gradient: 'linear-gradient(150deg,#2A3A2A,#6B8A7A)' },
   ],
   flights: [
     { id: 'ap', name: 'Air Peace · Economy', desc: 'Direct · LOS → DXB return · 1 bag', meta: 'Lagos (LOS) → Dubai (DXB) · Economy · 1 checked bag', price: 1036000, separate: 1096000, eligible: true },
@@ -647,7 +620,7 @@ const TIER_PREMIUM = {
   city: 'Dubai', code: 'DXB', country: 'United Arab Emirates',
   nights: 5, vibes: ['City Break', 'Food & Nightlife'], visa: 'add-on', freeCancelDays: 16,
   blurb: 'Downtown, breakfast, transfers both ways and a tour in the desert.',
-  plate: DUBAI.plate,
+  gradient: DUBAI.gradient,
   gallery: DUBAI.gallery,
   flights: DUBAI.flights,
   hotels: DUBAI.hotels,
@@ -675,13 +648,13 @@ const TIER_LUXURY = {
   city: 'Dubai', code: 'DXB', country: 'United Arab Emirates',
   nights: 5, vibes: ['City Break', 'Romantic'], visa: 'add-on', freeCancelDays: 16,
   blurb: 'Business class, a Burj view, a chauffeur and three curated tours.',
-  plate: plate(13),
+  gradient: g('#3A2A0C', '#A8823A', '#F2D48A'),
   gallery: [
-    { caption: 'Burj Khalifa from Downtown', plate: shot(13, 0) },
-    { caption: 'Address Downtown — Burj view', plate: shot(13, 1) },
-    { caption: 'Emirates business cabin', plate: shot(13, 2) },
-    { caption: 'Private chauffeur', plate: shot(13, 3) },
-    { caption: 'Dhow cruise', plate: shot(13, 4) },
+    { caption: 'Burj Khalifa from Downtown', gradient: g('#3A2A0C', '#A8823A', '#F2D48A') },
+    { caption: 'Address Downtown — Burj view', gradient: 'linear-gradient(150deg,#2A2A1E,#8A7A4A)' },
+    { caption: 'Emirates business cabin', gradient: 'linear-gradient(150deg,#1E2A3A,#5A6B8A)' },
+    { caption: 'Private chauffeur', gradient: 'linear-gradient(150deg,#2A2A2A,#6B6B6B)' },
+    { caption: 'Dhow cruise', gradient: 'linear-gradient(150deg,#12325C,#E09A45)' },
   ],
   flights: [
     { id: 'em-biz', name: 'Emirates · Business', desc: 'Direct · lounge access · 2×32kg', meta: 'Lagos (LOS) → Dubai (DXB) · Business · lounge access · 2 × 32kg', price: 1860000, separate: 2050000, eligible: true },
