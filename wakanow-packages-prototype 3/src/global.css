@@ -18,8 +18,11 @@ body,
 }
 
 body {
-  background: #f2f6f9;
-  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: var(--wkn-ink-50);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--wkn-ink-900);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -31,10 +34,11 @@ a {
   text-decoration: none;
 }
 
+/* Design system: focus is a 3px outer ring in brand blue at 25% alpha. */
 :focus-visible {
-  outline: 3px solid rgba(0, 75, 190, 0.45);
+  outline: 3px solid rgba(11, 79, 168, 0.45);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 @media (prefers-reduced-motion: reduce) {
