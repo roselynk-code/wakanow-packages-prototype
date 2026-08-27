@@ -277,10 +277,10 @@ export default function PackageDetail() {
       <div className="wrap">
         <div className="gallery">
           {pkg.gallery.map((shot, i) => (
-            <div className="shot" key={shot.caption} style={{ background: shot.gradient }}>
+            <div className="shot" key={shot.caption} style={{ background: shot.plate }}>
               <span>{shot.caption}</span>
               {i === 0 && pkg.gallery[0].skyline && (
-                <svg viewBox="0 0 400 80" preserveAspectRatio="none" fill="#001845">
+                <svg viewBox="0 0 400 80" preserveAspectRatio="none" fill="var(--wkn-blue-900)">
                   <path d="M0 80V54h22V30h10V14h8v16h12v24h26V40h30v14h18V26h12v28h34V46h24v8h30V22h10v32h28V44h30v10h26V34h14v20h36v26z" />
                 </svg>
               )}
@@ -316,14 +316,14 @@ export default function PackageDetail() {
               align="right"
               label="Trip dates"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="#4A6078" strokeWidth="2" strokeLinecap="round">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--wkn-ink-600)" strokeWidth="2" strokeLinecap="round">
                 <rect x="3" y="5" width="18" height="16" rx="2" />
                 <path d="M3 10h18M8 3v4M16 3v4" />
               </svg>
               {dateLabel}
             </DateRangePicker>
             <button type="button" className="iconbtn" onClick={shareOnWhatsApp}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#4A6078" strokeWidth="2" strokeLinecap="round">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--wkn-ink-600)" strokeWidth="2" strokeLinecap="round">
                 <circle cx="18" cy="5" r="3" />
                 <circle cx="6" cy="12" r="3" />
                 <circle cx="18" cy="19" r="3" />
@@ -335,7 +335,7 @@ export default function PackageDetail() {
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#4A6078"
+                stroke="var(--wkn-ink-600)"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"

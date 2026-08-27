@@ -168,7 +168,7 @@ function PackageCard({ pkg, departDate, onOpen }) {
 
   return (
     <button type="button" className="card" onClick={onOpen}>
-      <div className="plate" style={{ background: pkg.gradient }}>
+      <div className="plate" style={{ background: pkg.plate }}>
         <span className="savebadge">Save {nairaShort(save)}</span>
         <span className="country">{pkg.country}</span>
         <span className="place">{pkg.city}</span>

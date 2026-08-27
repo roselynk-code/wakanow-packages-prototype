@@ -104,13 +104,15 @@ function Toggle({ on, label, onToggle }) {
 
 /** The amber visa card. One destination shows one; a multi-city trip shows one
  *  per country that needs a visa, which is why it is a component and not inline
- *  markup — the copy and the price are the destination's own. */
+ *  markup — the copy and the price are the destination's own.
+ *  Its ground has no exact token: orange-50 is the system's warm near-white and
+ *  keeps the plate distinct from the warning-bg notice nested inside it. */
 function VisaCard({ heading, city, country, nationality, addon, on, onToggle }) {
   return (
-    <div className="card" style={{ border: '2px solid #C77C00', background: '#FFFCF5' }}>
+    <div className="card" style={{ border: '2px solid var(--wkn-orange-700)', background: 'var(--wkn-orange-50)' }}>
       <div className="cardhead">
         <h2>
-          <span className="stepnum" style={{ background: '#C77C00' }}>
+          <span className="stepnum" style={{ background: 'var(--wkn-orange-700)' }}>
             !
           </span>
           {heading}
@@ -119,8 +121,9 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle }) 
       </div>
       <div
         style={{
-          background: '#FEF8ED',
-          border: '1px solid rgba(199,124,0,.25)',
+          background: 'var(--wkn-warning-bg)',
+          // no alpha-border token exists; the rgba is re-mixed on orange-700.
+          border: '1px solid rgba(217,115,21,.25)',
           borderRadius: 'var(--r)',
           padding: '12px 14px',
           marginBottom: '14px',
@@ -130,13 +133,13 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle }) 
           style={{
             fontSize: '13px',
             fontWeight: 700,
-            color: '#C77C00',
+            color: 'var(--wkn-orange-700)',
             marginBottom: '4px',
           }}
         >
           You need a visa for {city} on a {nationality} passport
         </div>
-        <div style={{ fontSize: '12px', color: '#7A5300', lineHeight: '18px' }}>
+        <div style={{ fontSize: '12px', color: 'var(--wkn-orange-800)', lineHeight: '18px' }}>
           Wakanow can apply for you. Turn it on below and we'll collect your documents by email
           after payment. If you already hold a valid {country} visa, leave it off — we will not add
           it to your price.
@@ -165,10 +168,10 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle }) 
       <div
         style={{
           fontSize: '10px',
-          color: '#7A5300',
+          color: 'var(--wkn-orange-800)',
           marginTop: '10px',
           paddingTop: '10px',
-          borderTop: '1px solid rgba(199,124,0,.15)',
+          borderTop: '1px solid rgba(217,115,21,.15)',
           lineHeight: '15px',
         }}
       >
@@ -875,6 +878,8 @@ export default function Checkout() {
                   aria-pressed={channel === 'whatsapp'}
                   onClick={() => setChannel('whatsapp')}
                 >
+                  {/* WhatsApp's own brand green — their mark, not our palette, so it
+                      stays off the design system's ramps. */}
                   <span className="cp-icon" style={{ background: '#25D366' }}>
                     <WhatsAppGlyph />
                   </span>
@@ -920,7 +925,7 @@ export default function Checkout() {
                 </h2>
               </div>
               <div className="paylock">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#8E8EA9" strokeWidth="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--wkn-ink-500)" strokeWidth="2">
                   <rect x="4" y="10" width="16" height="11" rx="2" />
                   <path d="M8 10V7a4 4 0 018 0v3" />
                 </svg>
@@ -1196,12 +1201,12 @@ export default function Checkout() {
                   <div
                     style={{
                       marginTop: '12px',
-                      background: '#F5F7FA',
-                      border: '1px solid #D1D1DB',
-                      borderRadius: '8px',
+                      background: 'var(--wkn-ink-50)',
+                      border: '1px solid var(--wkn-ink-300)',
+                      borderRadius: 'var(--r)',
                       padding: '14px',
                       fontSize: '12px',
-                      color: '#555770',
+                      color: 'var(--wkn-ink-600)',
                       lineHeight: '18px',
                     }}
                   >
@@ -1213,9 +1218,9 @@ export default function Checkout() {
                       style={{
                         display: 'block',
                         marginTop: '10px',
-                        background: '#EEF5FF',
-                        color: '#004BBE',
-                        borderRadius: '8px',
+                        background: 'var(--wkn-blue-100)',
+                        color: 'var(--wkn-blue-700)',
+                        borderRadius: 'var(--r)',
                         padding: '8px 12px',
                         fontSize: '12px',
                         fontWeight: 600,
@@ -1237,6 +1242,8 @@ export default function Checkout() {
                     style={{
                       flex: 'none',
                       width: '100%',
+                      // WhatsApp's own brand green on a share-to-WhatsApp control —
+                      // left as-is deliberately; it is their mark, not our palette.
                       background: '#25D366',
                       color: '#fff',
                       borderRadius: 'var(--r)',
@@ -1258,7 +1265,7 @@ export default function Checkout() {
                     style={{
                       flex: 'none',
                       width: '100%',
-                      background: '#EEF5FF',
+                      background: 'var(--wkn-blue-100)',
                       color: 'var(--brand-500)',
                       borderRadius: 'var(--r)',
                       padding: '9px',

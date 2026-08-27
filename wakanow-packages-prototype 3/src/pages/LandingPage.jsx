@@ -44,7 +44,7 @@ const DEST_CHIPS = [
 
 function ShareIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="#004BBE" strokeWidth="2" strokeLinecap="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--wkn-blue-700)" strokeWidth="2" strokeLinecap="round">
       <circle cx="18" cy="5" r="3" />
       <circle cx="6" cy="12" r="3" />
       <circle cx="18" cy="19" r="3" />
@@ -289,7 +289,7 @@ export default function LandingPage() {
                 // The whole card is clickable for convenience; the CTA below is the
                 // keyboard- and screen-reader-reachable control for the same action.
                 <article className="card" key={pkg.slug} onClick={() => navigate(route)}>
-                  <div className="plate" style={{ background: pkg.gradient }}>
+                  <div className="plate" style={{ background: pkg.plate }}>
                     <button
                       className="sharebtn"
                       aria-label="Share"

@@ -3,29 +3,30 @@
    a browse view with larger cards than the landing page's four-up strip. */
 
 .pg-catalogue {
-  --brand-500: #004bbe;
-  --brand-600: #003d9c;
-  --brand-800: #002059;
-  --brand-900: #001845;
-  --accent-400: #f7941d;
-  --surface-page: #f2f6f9;
-  --text-primary: #0d1520;
-  --text-secondary: #4a6078;
-  --text-muted: #6b8096;
-  --ok: #0d7a45;
-  --ok-bg: #ebf7f2;
-  --ok-border: #b3dfc9;
-  --deal: #d93b10;
-  --deal-bg: #fef1ed;
-  --border-default: #ebf0f5;
-  --border-medium: #bfd0dc;
-  --font-heading: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
-  --r-button: 8px;
-  --r-card: 14px;
-  --r-pill: 999px;
-  --sh-card: 0 1px 2px rgba(0, 20, 51, 0.04), 0 2px 8px rgba(0, 20, 51, 0.06);
-  --sh-hover: 0 8px 28px rgba(0, 20, 51, 0.12);
+  /* Local names kept, values re-pointed at the design system (src/theme.css). */
+  --brand-500: var(--wkn-blue-700);
+  --brand-600: var(--wkn-blue-800);
+  --brand-800: var(--wkn-blue-800);
+  --brand-900: var(--wkn-blue-900);
+  --accent-400: var(--wkn-orange-600);
+  --surface-page: var(--wkn-ink-50);
+  --text-primary: var(--wkn-ink-900);
+  --text-secondary: var(--wkn-ink-600);
+  --text-muted: var(--wkn-ink-500);
+  --ok: var(--wkn-success);
+  --ok-bg: var(--wkn-success-bg);
+  --ok-border: var(--ds-success-border);
+  --deal: var(--ds-deal);
+  --deal-bg: var(--ds-deal-bg);
+  --border-default: var(--wkn-ink-150);
+  --border-medium: var(--wkn-ink-300);
+  --font-heading: var(--font-sans);
+  --font-body: var(--font-sans);
+  --r-button: var(--radius-md);
+  --r-card: var(--radius-lg);
+  --r-pill: var(--radius-pill);
+  --sh-card: var(--shadow-sm);
+  --sh-hover: var(--shadow-md);
 
   background: var(--surface-page);
   color: var(--text-primary);
@@ -45,18 +46,25 @@
 
 .pg-catalogue .wrap { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
 
-/* nav — matches the other screens */
-.pg-catalogue .nav { background: var(--brand-800); height: 56px; display: flex; align-items: center; }
+/* nav — matches the other screens: a WHITE surface with a hairline bottom
+   border, logo in brand blue with the orange `i`, active tab underlined in
+   orange. Same treatment as LandingPage.css; .navauth is plain text here,
+   so it takes secondary ink rather than the ghost/solid button pair. */
+.pg-catalogue .nav { background: var(--wkn-white); border-bottom: 1px solid var(--wkn-ink-200); height: 56px; display: flex; align-items: center; }
 .pg-catalogue .nav .wrap { display: flex; align-items: center; gap: 28px; width: 100%; }
 .pg-catalogue .logo {
   font-family: var(--font-heading); font-weight: 800; font-size: 19px;
-  color: #fff; letter-spacing: -0.5px; background: none; padding: 0;
+  color: var(--brand-500); letter-spacing: -0.5px; background: none; padding: 0;
 }
 .pg-catalogue .logo i { color: var(--accent-400); font-style: normal; }
 .pg-catalogue .navlinks { display: flex; gap: 22px; margin-right: auto; }
-.pg-catalogue .navlinks a { color: rgba(255, 255, 255, 0.6); text-decoration: none; font-size: 14px; font-weight: 500; }
-.pg-catalogue .navlinks a.on { color: #fff; }
-.pg-catalogue .navauth { color: rgba(255, 255, 255, 0.8); font-size: 13px; }
+.pg-catalogue .navlinks a {
+  color: var(--text-primary); text-decoration: none; font-size: 14px; font-weight: 500;
+  padding: 17px 0; border-bottom: 2px solid transparent;
+}
+.pg-catalogue .navlinks a:hover { color: var(--brand-500); }
+.pg-catalogue .navlinks a.on { color: var(--brand-500); font-weight: 600; border-bottom-color: var(--accent-400); }
+.pg-catalogue .navauth { color: var(--text-secondary); font-size: 13px; }
 
 /* header */
 .pg-catalogue .cathead { padding: 26px 0 4px; }
@@ -124,7 +132,8 @@
   text-align: left; padding: 0; width: 100%;
   transition: box-shadow 0.2s, transform 0.2s;
 }
-.pg-catalogue .card:hover { box-shadow: var(--sh-hover); transform: translateY(-3px); }
+/* Card hover: 2px lift plus one elevation step (--sh-card → --sh-hover). */
+.pg-catalogue .card:hover { box-shadow: var(--sh-hover); transform: translateY(-2px); }
 
 .pg-catalogue .plate { height: 168px; position: relative; flex-shrink: 0; }
 .pg-catalogue .plate .place {
@@ -154,7 +163,7 @@
 .pg-catalogue .op .oi { width: 15px; flex-shrink: 0; }
 
 .pg-catalogue .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
-.pg-catalogue .tag { background: #eef5ff; color: var(--brand-500); font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: var(--r-pill); }
+.pg-catalogue .tag { background: var(--wkn-blue-100); color: var(--brand-500); font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: var(--r-pill); }
 .pg-catalogue .tag.visa { background: var(--surface-page); color: var(--text-secondary); font-weight: 500; }
 .pg-catalogue .tag.novisa { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
 
@@ -171,9 +180,13 @@
   display: block; text-align: center;
   margin-top: 12px; background: var(--accent-400); color: #fff; width: 100%;
   border-radius: var(--r-button); padding: 10px; font-size: 13px; font-weight: 700;
-  box-shadow: 0 4px 14px rgba(247, 148, 29, 0.32);
+  /* Accent glow re-mixed on the system accent (--wkn-orange-600 #f58220),
+     matching the --sh-orange token the sibling screens carry. */
+  box-shadow: 0 4px 14px rgba(245, 130, 32, 0.30);
 }
-.pg-catalogue .cta:hover { filter: brightness(1.06); }
+/* Primary hover darkens one rung (orange-600 → orange-700) — the system
+   rules out filter:brightness() and scale-up hovers. */
+.pg-catalogue .cta:hover { background: var(--wkn-orange-700); }
 
 /* empty state */
 .pg-catalogue .empty {
@@ -182,6 +195,7 @@
 }
 .pg-catalogue .empty p { font-size: 13px; color: var(--text-muted); margin: 0 0 10px; }
 .pg-catalogue .empty button { background: var(--brand-500); color: #fff; border-radius: var(--r-button); padding: 9px 18px; font-size: 12.5px; font-weight: 600; }
+.pg-catalogue .empty button:hover { background: var(--wkn-blue-800); }
 
 .pg-catalogue footer {
   padding: 18px 0; border-top: 1px solid var(--border-default);
