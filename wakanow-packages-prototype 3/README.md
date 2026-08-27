@@ -177,6 +177,40 @@ five files. `PackagesCatalogue.css` is hand-written and is never regenerated.
 > design-system pass described above. It is only for a structural change made
 > in a mockup, and after running it the token blocks have to be re-aliased.
 
+### The flight step mirrors wakanow.com's results card
+
+`src/lib/flights.js` reshapes each flight record into the anatomy the live
+results page uses, and `src/components/FlightCard.jsx` renders it: airline
+lockup, **three ways to pay side by side** (Full Pay / Prime / Pay Small Small),
+the depart and return timelines with codes, duration, stop and next-day marker,
+baggage chips, and the fare condition. `FlightSort.jsx` is the summary rail
+above the list — cheapest fare, shortest duration, earliest departure — which
+doubles as the sort control and shows the winning *value* in each cell.
+
+None of that is new information. It is all implied by what a flight record
+already holds, so rather than hand-authoring sixty flights the card's shape is
+**derived from the authored strings**, which are consistent by construction:
+
+```
+name  "Qatar Airways · 1 stop Doha"
+desc  "LOS 15:10 → DXB 07:40 · 11h 30m · 2 bags"
+meta  "Lagos (LOS) → Doha (DOH) → Dubai (DXB) · Economy · 2 checked bags"
+```
+
+All 37 flights in the catalogue parse. Two things are derived rather than read:
+
+- **The return timing.** Only the authored Dubai record spells its return out.
+  The rest get a return derived from the outbound — same duration, a fixed
+  turnaround after landing — so every round trip shows both legs. Deterministic,
+  so a given flight always reads the same.
+- **The Prime fare**, at 2% under Full Pay, which is the ratio the live results
+  page runs (₦1,287,468 → ₦1,261,719). It is a *display* figure: the package
+  total is still composed from the public fare, so nothing downstream moves and
+  every published total still reconciles.
+
+A leg that is not the whole trip is a one-way hop, so it renders with no return
+timeline — the journey home is priced once, at the end.
+
 ### Why the shared components' CSS looks over-qualified
 
 Every generated page stylesheet carries the mockups' `*{margin:0;padding:0}`
