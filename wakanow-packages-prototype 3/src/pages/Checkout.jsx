@@ -4,11 +4,33 @@ import { Link, useNavigate } from 'react-router-dom';
 import BackBar from '../components/BackBar.jsx';
 import { TIERS, findPackage, isTier } from '../data/packages.js';
 import { formatRange, formatWeekday } from '../lib/dates.js';
+import { flightCard } from '../lib/flights.js';
 import { naira, nairaShort } from '../lib/format.js';
 import { priceItinerary, visaLegs } from '../lib/itinerary.js';
 import { cardPrice, findFare, findRoom, pricePackage } from '../lib/pricing.js';
 import { useTrip } from '../state/useTrip.js';
 import './Checkout.css';
+
+/**
+ * Checkout, rebuilt to the anatomy of the live wakanow.com/cart.
+ *
+ * The structural move: the cart's first numbered section is the BOOKING SUMMARY
+ * itself, in the main column — a line card per booked component, then an
+ * itinerary card carrying the depart/return timeline, then the fare rules. The
+ * right rail is left to do one job, which is the money. That is the opposite of
+ * what this screen used to do (summary stuffed into a 360px rail, travellers
+ * first), and it is better: you confirm what you bought before you type a name.
+ *
+ *   1  Booking Summary     line cards · itinerary timeline · fare rules
+ *   2  Traveller Details   contact · lead traveller · passport upload · profile
+ *   3  Enhance Your Trip   add-on rows with + Add / − Remove
+ *   —  the visa, contact-channel and payment blocks this product adds, unnumbered
+ *      because the live cart has no counterpart to number them against
+ *
+ * Nothing about the pricing moved. Every figure is the one the screen already
+ * computed; see the rail comment for why the breakdown keeps this product's own
+ * component lines rather than the live cart's Flights / Taxes / Service Charge.
+ */
 
 const NAV_LINKS = ['Flights', 'Hotels', 'Packages', 'Tours', 'Visa', 'Prime', 'Manage Booking'];
 
@@ -23,6 +45,32 @@ const TIER_MODIFIER = { Essential: 'ess', Premium: 'pre', Luxury: 'lux' };
 const TITLES = ['Mrs', 'Mr', 'Ms'];
 const GENDERS = ['Female', 'Male'];
 const NATIONALITIES = ['Nigeria', 'Ghana', 'United Kingdom', 'United States', 'South Africa'];
+
+/** The live form puts a flag in the nationality select and beside the dial code. */
+const FLAGS = {
+  Nigeria: '🇳🇬',
+  Ghana: '🇬🇭',
+  'United Kingdom': '🇬🇧',
+  'United States': '🇺🇸',
+  'South Africa': '🇿🇦',
+};
+
+/** The dial codes the fused phone group offers, in the same order as the
+ *  nationality list so the two read as one set. */
+const DIAL_CODES = [
+  { code: '+234', flag: '🇳🇬' },
+  { code: '+233', flag: '🇬🇭' },
+  { code: '+44', flag: '🇬🇧' },
+  { code: '+1', flag: '🇺🇸' },
+  { code: '+27', flag: '🇿🇦' },
+];
+
+/** Date of birth is three selects on the live cart, not a free-text field. The
+ *  stored value stays the '15 Mar 1990' string the mockup authored, so the
+ *  seeded travellers still display exactly as before. */
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => String(i + 1));
+const YEAR_OPTIONS = Array.from({ length: 101 }, (_, i) => String(new Date().getFullYear() - i));
 
 /** Everything the toggles can add on top of the selected tier.
  *  `group` splits the breakdown the way the mockup did: packaging additions
@@ -54,6 +102,24 @@ const AUTHORED_TOUR = {
   separate: 74000,
 };
 
+/** The icon tile each add-on row wears. The live rows are illustrated; these are
+ *  the same glyph vocabulary the summary line cards use. */
+const ADDON_ICONS = {
+  transfer: '🚐',
+  safari: '🗺',
+  callReminder: '📞',
+  smsReminder: '💬',
+  kalabash: '💳',
+};
+
+/** Product eyebrow and tile for each priced component of a package. */
+const PRODUCTS = {
+  flight: { eyebrow: 'Flight', icon: '✈' },
+  hotel: { eyebrow: 'Hotel', icon: '🏨' },
+  transfer: { eyebrow: 'Transfer', icon: '🚐' },
+  tours: { eyebrow: 'Tour', icon: '🗺' },
+};
+
 const extraAmount = (item, travellers) => (item.perTraveller ? item.price * travellers : item.price);
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -73,11 +139,54 @@ const PROMOS = {
 
 const HOLD_SECONDS = 13 * 60 + 8;
 
+/** The outbound clock the single-destination booking has always shown. It is the
+ *  mockup's own authored timetable — the tiers carry fares, not a schedule — and
+ *  no figure on this screen moves in the rebuild, so the timeline reads it
+ *  rather than the flight record's departure. */
+const AUTHORED_OUTBOUND = {
+  departTime: '14:45',
+  arriveTime: '08:30',
+  durationText: '14h 45m',
+  stopLabel: '1 stop',
+};
+
 function formatClock(totalSeconds) {
   const mm = Math.floor(totalSeconds / 60);
   const ss = totalSeconds % 60;
   return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 }
+
+/* ── Clock arithmetic for the timeline ──────────────────────────────────────
+   The same rules src/lib/flights.js uses, kept local because the return leg of
+   the single-destination trip is derived from the mockup's own authored clock
+   times rather than from a flight record. */
+
+const toMinutes = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+};
+
+const toClock = (minutes) => {
+  const wrapped = ((minutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+};
+
+const durationMinutes = (text) => {
+  const h = /(\d+)\s*h/.exec(text ?? '');
+  const m = /(\d+)\s*m/.exec(text ?? '');
+  return (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
+};
+
+/** Eight hours on the ground, then the same duration home — lib/flights.js's
+ *  own turnaround rule, so a derived return reads the same wherever it appears. */
+function deriveReturnTimes({ arriveTime, durationText }) {
+  const depart = toMinutes(arriveTime) + 8 * 60;
+  return { departTime: toClock(depart), arriveTime: toClock(depart + durationMinutes(durationText)) };
+}
+
+const landsNextDay = (departTime, arriveTime) => toMinutes(arriveTime) < toMinutes(departTime);
+
+/* ── Glyphs ─────────────────────────────────────────────────────────────── */
 
 function WhatsAppGlyph({ size = 18 }) {
   return (
@@ -87,8 +196,28 @@ function WhatsAppGlyph({ size = 18 }) {
   );
 }
 
+function PlaneGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M2 14l20-8-6 14-3-5-5-2z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TrashGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 7h16M10 11.5v5.5M14 11.5v5.5" />
+      <path d="M6.5 7l.9 12a2 2 0 002 1.9h5.2a2 2 0 002-1.9L17.5 7" />
+      <path d="M9.5 7V5.2A1.2 1.2 0 0110.7 4h2.6a1.2 1.2 0 011.2 1.2V7" />
+    </svg>
+  );
+}
+
 /** A `.tgl` switch — a real switch button wearing the mockup's own classes.
- *  Declared at module scope so toggling does not remount it and drop focus. */
+ *  Declared at module scope so toggling does not remount it and drop focus.
+ *  Still the control the visa card uses; the Enhance rows moved to + Add /
+ *  − Remove buttons, which is what the live cart shows. */
 function Toggle({ on, label, onToggle }) {
   return (
     <button
@@ -99,6 +228,177 @@ function Toggle({ on, label, onToggle }) {
       className={on ? 'tgl on' : 'tgl'}
       onClick={onToggle}
     />
+  );
+}
+
+/* ── Section 1: Booking Summary ─────────────────────────────────────────── */
+
+/** The live cart's numbered section: the blue circle sits OUTSIDE the card, in
+ *  the gutter to its left, with the heading beside it. */
+function Section({ num, title, note, children }) {
+  return (
+    <section className="sec">
+      <header className="sechead">
+        <span className="stepnum" aria-hidden="true">
+          {num}
+        </span>
+        <h2>{title}</h2>
+        {note && <span className="secnote">{note}</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** One booked component: tile, product eyebrow, what it is, its price, and the
+ *  delete control the live cart puts at the far right. */
+function LineCard({ icon, eyebrow, title, meta = [], price, onRemove }) {
+  return (
+    <div className="linecard">
+      <span className="lc-ic" aria-hidden="true">{icon}</span>
+      <div className="lc-body">
+        <div className="lc-eyebrow">{eyebrow}</div>
+        <div className="lc-title">{title}</div>
+        {meta.filter(Boolean).map((line) => (
+          <div className="lc-meta" key={line}>{line}</div>
+        ))}
+      </div>
+      <div className="lc-price">{naira(price)}</div>
+      {/* Components are part of a package, so the cart's delete affordance sends
+          you back to the builder to change it rather than silently unpicking a
+          bundle whose price depends on what is in it. */}
+      <button
+        type="button"
+        className="lc-del"
+        aria-label={`Change or remove ${title}`}
+        title="Change this in your package"
+        onClick={onRemove}
+      >
+        <TrashGlyph />
+      </button>
+    </div>
+  );
+}
+
+/** One direction of travel: the badge and date, the airline lockup, then the
+ *  timeline — big time with code and city stacked under it at each end, the
+ *  duration above the rule and the stop count below it. */
+function ItineraryLeg({ badge, date, airline, detail, leg }) {
+  return (
+    <div className="itinleg">
+      <div className="itin-when">
+        <span className="itin-badge">{badge}</span>
+        <span className="itin-date">{date}</span>
+      </div>
+
+      <div className="itin-air">
+        <span className="itin-mark" aria-hidden="true">
+          <PlaneGlyph />
+        </span>
+        <div className="itin-airname">
+          <b>{airline}</b>
+          {/* The live lockup carries flight numbers here. This catalogue holds
+              none, so the slot states what the record does know: the shape of
+              the routing and the fare that was bought. */}
+          <span>{detail}</span>
+        </div>
+      </div>
+
+      <div className="itin-row">
+        <div className="itin-end">
+          <b>{leg.departTime}</b>
+          <span className="itin-code">{leg.fromCode}</span>
+          <span className="itin-city">{leg.fromCity}</span>
+        </div>
+
+        <div className="itin-mid">
+          <span className="itin-dur">{leg.durationText}</span>
+          <span className="itin-line" aria-hidden="true">
+            <i />
+            <i />
+          </span>
+          <span className={leg.stopLabel === 'Direct' ? 'itin-stops itin-direct' : 'itin-stops'}>
+            {leg.stopLabel}
+          </span>
+        </div>
+
+        <div className="itin-end itin-arrive">
+          <b>
+            {leg.arriveTime}
+            {leg.nextDay && <sup>+1</sup>}
+          </b>
+          <span className="itin-code">{leg.toCode}</span>
+          <span className="itin-city">{leg.toCity}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The itinerary card: one or two legs, the cabin and baggage line, and — on
+ *  the last card of the section — the fare rules. */
+function ItineraryCard({ legs, cabinLine, rules }) {
+  return (
+    <div className="card itincard">
+      {legs.map((item) => (
+        <ItineraryLeg key={item.badge} {...item} />
+      ))}
+
+      <div className="itin-cabin">{cabinLine}</div>
+
+      {rules && (
+        <div className="farerules">
+          <h3>Fare Rules</h3>
+          <div className="fr-grid">
+            <div className="fr-policy">
+              <span className="fr-ic" aria-hidden="true">🛡</span>
+              <div>
+                <div className="fr-label">Cancellation policy</div>
+                <div className="fr-value">{rules.cancellation}</div>
+              </div>
+            </div>
+            <div className="fr-panel">
+              <div className="fr-title">{rules.airline} Fare Rules</div>
+              {rules.lines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Section 3: Enhance Your Trip ───────────────────────────────────────── */
+
+/** An add-on row on the live cart: icon tile, name and description, the price
+ *  top-right, and the Add / Remove control under it. A row that is on takes the
+ *  brand border and the pale blue ground. */
+function AddonRow({ icon, title, isNew, desc, price, was, on, onToggle }) {
+  return (
+    <div className={on ? 'addonrow sel' : 'addonrow'}>
+      <span className="ar-ic" aria-hidden="true">{icon}</span>
+      <div className="ar-body">
+        <h4>
+          {title}
+          {isNew && <span className="new">New</span>}
+        </h4>
+        <p>{desc}</p>
+      </div>
+      <div className="ar-side">
+        <b>{price}</b>
+        {was && <s>{was}</s>}
+        <button
+          type="button"
+          className={on ? 'ar-btn ar-remove' : 'ar-btn ar-add'}
+          aria-pressed={on}
+          onClick={onToggle}
+        >
+          {on ? '− Remove' : '+ Add'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -247,6 +547,9 @@ export default function Checkout() {
   const [email, setEmail] = useState('adaeze.okonkwo@gmail.com');
   const [phone, setPhone] = useState('+234 803 412 6690');
   const [createProfile, setCreateProfile] = useState(false);
+  /** The live cart gates its pay button on the terms box. Checked to begin with,
+   *  so the prototype's flow is never blocked by default. */
+  const [acceptedTerms, setAcceptedTerms] = useState(true);
   // Seeded once: the party size is fixed for the life of this screen, since the
   // only way to change it is to go back to the search.
   const [travellers, setTravellers] = useState(() =>
@@ -254,6 +557,7 @@ export default function Checkout() {
       title: 'Mr',
       firstName: '',
       lastName: '',
+      middleName: '',
       dob: '',
       gender: 'Male',
       ...AUTHORED_TRAVELLERS[i],
@@ -404,6 +708,24 @@ export default function Checkout() {
   const updateTraveller = (index, field, value) =>
     setTravellers((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
 
+  /** The three DOB selects write back into the one authored '15 Mar 1990' string. */
+  const dobParts = (value) => {
+    const [day = '', month = '', year = ''] = (value || '').split(' ');
+    return { day, month, year };
+  };
+  const updateDob = (index, part, value) => {
+    const next = { ...dobParts(travellers[index].dob), [part]: value };
+    updateTraveller(index, 'dob', [next.day, next.month, next.year].filter(Boolean).join(' '));
+  };
+
+  /** The phone is one string in state. The fused group presents it as a dial
+   *  code and a number and writes it back as one, so nothing downstream — the
+   *  WhatsApp channel line included — has to know it was split. */
+  const dialCode = DIAL_CODES.find((d) => phone.startsWith(d.code))?.code ?? DIAL_CODES[0].code;
+  const localNumber = phone.startsWith(dialCode) ? phone.slice(dialCode.length).trim() : phone;
+  const setDialCode = (code) => setPhone(`${code} ${localNumber}`.trim());
+  const setLocalNumber = (value) => setPhone(`${dialCode} ${value}`.trim());
+
   const toggleAddon = (key) => setAddons((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const toggleLegVisa = (legId) => setLegVisas((prev) => ({ ...prev, [legId]: !prev[legId] }));
@@ -427,6 +749,252 @@ export default function Checkout() {
   };
 
   const inert = (e) => e.preventDefault();
+
+  /* ── The booking summary ────────────────────────────────────────────────
+     Line cards and itinerary cards are built from the same priced lines the
+     breakdown uses, so a component can never appear in one and not the other. */
+
+  const editInBuilder = () => navigate('/builder');
+
+  /** The line cards for one priced package: one per component it carries. */
+  const linesToCards = (lines, ctx) =>
+    lines
+      .filter((line) => PRODUCTS[line.key])
+      .map((line) => {
+        const product = PRODUCTS[line.key];
+        const detail = ctx[line.key] ?? {};
+        return {
+          key: ctx.prefix ? `${ctx.prefix}:${line.key}` : line.key,
+          icon: product.icon,
+          eyebrow: product.eyebrow,
+          title: detail.title ?? line.label,
+          meta: detail.meta ?? [],
+          price: line.bundled,
+        };
+      });
+
+  /** The fare the rules panel speaks for, and the airline whose rules they are. */
+  const rulesFare = isMultiDestination ? trip.legPrices[0].priced.fare : fare;
+  const rulesFlight = isMultiDestination ? trip.legPrices[0].priced.flight : flight;
+  const rulesPkg = isMultiDestination ? itinerary[0].pkg : selected;
+  const fareRules = {
+    airline: rulesFlight.name.split(' · ')[0],
+    cancellation: rulesFare.refundable || 'Non-refundable',
+    lines: [
+      `Changes: ${rulesFare.changeable || 'not permitted after ticketing'}.`,
+      `Refunds: ${rulesFare.refundable || 'this fare is non-refundable, including for a no-show'}.`,
+      rulesPkg.freeCancelDays
+        ? `The package may be cancelled free of charge up to ${rulesPkg.freeCancelDays} days before departure.`
+        : null,
+      `Baggage: ${rulesFare.bags}. Seating: ${rulesFare.seat.toLowerCase()}.`,
+      'Name changes are not permitted once the ticket is issued.',
+    ].filter(Boolean),
+  };
+
+  /** The cabin and baggage row under the timeline — the same facts the rail
+   *  used to carry under the flight group. */
+  const cabinLine = [
+    rulesFare.cabin,
+    rulesFare.bags,
+    rulesFare.seat,
+    rulesFare.changeable || 'No changes',
+    rulesFare.refundable || 'Non-refundable',
+  ].join(' · ');
+
+  // The depart leg keeps the authored clock exactly. The return leg the live
+  // cart demands is derived from it by lib/flights.js's turnaround rule rather
+  // than invented, so nothing on the screen contradicts anything else.
+  const singleLegs = () => {
+    const back = deriveReturnTimes(AUTHORED_OUTBOUND);
+    // The live lockup carries flight numbers under the airline. This catalogue
+    // holds none, so the slot states the direction and the fare that was bought
+    // rather than the record's routing shape, which the authored clock above
+    // does not always agree with.
+    const detail = `Return · ${fare.label}`;
+    const airline = flight.name.split(' · ')[0];
+    return [
+      {
+        badge: 'DEPART',
+        date: formatWeekday(search.departDate),
+        airline,
+        detail,
+        leg: {
+          ...AUTHORED_OUTBOUND,
+          fromCode: search.fromCode,
+          fromCity: search.fromCity,
+          toCode: destCode,
+          toCity: selected.city,
+          nextDay: landsNextDay(AUTHORED_OUTBOUND.departTime, AUTHORED_OUTBOUND.arriveTime),
+        },
+      },
+      {
+        badge: 'RETURN',
+        date: formatWeekday(search.returnDate),
+        airline,
+        detail,
+        leg: {
+          ...back,
+          durationText: AUTHORED_OUTBOUND.durationText,
+          stopLabel: AUTHORED_OUTBOUND.stopLabel,
+          fromCode: destCode,
+          fromCity: selected.city,
+          toCode: search.fromCode,
+          toCity: search.fromCity,
+          nextDay: landsNextDay(back.departTime, back.arriveTime),
+        },
+      },
+    ];
+  };
+
+  /** A multi-city hop has no authored timetable of its own — the one-way flights
+   *  are derived — so the timeline reads the destination package's own flight
+   *  for its times, and the leg for who is flying where. */
+  const legTimeline = (entry, legPriced) => {
+    const source =
+      entry.pkg.flights.find((f) => `${f.id}-ow` === legPriced.flight.id) ?? entry.pkg.flights[0];
+    const card = flightCard(source, { oneWay: true });
+    if (!card.outbound) return null;
+    return {
+      badge: 'DEPART',
+      date: formatWeekday(entry.startDate),
+      airline: card.airline,
+      detail: `One way · ${legPriced.fare.label}`,
+      leg: {
+        departTime: card.outbound.departTime,
+        arriveTime: card.outbound.arriveTime,
+        durationText: card.outbound.durationText,
+        stopLabel: card.stops.label,
+        nextDay: card.outbound.nextDay,
+        fromCode: entry.fromCode,
+        fromCity: entry.fromCity,
+        toCode: entry.toCode,
+        toCity: entry.toCity,
+      },
+    };
+  };
+
+  /** The journey home. The last destination's authored return leg IS that
+   *  journey — its package flies out of the traveller's own origin — so the
+   *  timeline uses it rather than deriving a second time. */
+  const homeTimeline = () => {
+    const last = itinerary[itinerary.length - 1];
+    const card = flightCard(last.pkg.flights[0]);
+    if (!card.inbound) return null;
+    return {
+      badge: 'RETURN',
+      date: formatWeekday(last.endDate),
+      airline: trip.home.airline,
+      detail: `One way · ${trip.legPrices[trip.legPrices.length - 1].priced.fare.label}`,
+      leg: {
+        departTime: card.inbound.departTime,
+        arriveTime: card.inbound.arriveTime,
+        durationText: card.inbound.durationText,
+        stopLabel: card.stops.label,
+        nextDay: card.inbound.nextDay,
+        fromCode: last.toCode,
+        fromCity: last.toCity,
+        toCode: search.fromCode,
+        toCity: search.fromCity,
+      },
+    };
+  };
+
+  /** The whole of section 1, as data: a run of line cards, then an itinerary
+   *  card, once for a package and once per destination for an itinerary. */
+  const summaryBlocks = isMultiDestination
+    ? [
+        ...trip.legPrices.map(({ entry, priced: legPriced }) => ({
+          key: entry.id,
+          cards: linesToCards(legPriced.lines, {
+            prefix: entry.id,
+            flight: {
+              title: `${entry.fromCode} → ${entry.toCode} · ${legPriced.flight.name.split(' · ')[0]}`,
+              meta: [`${legPriced.fare.label} · ${legPriced.fare.bags}`],
+            },
+            hotel: {
+              title: `${legPriced.hotel.name} · ${plural(entry.nights, 'night')}`,
+              meta: [
+                `${legPriced.room.name} · ${legPriced.room.board} · ${legPriced.room.beds}`,
+                `Check-in ${formatWeekday(entry.startDate)} · Check-out ${formatWeekday(entry.endDate)}`,
+              ],
+            },
+            transfer: { title: entry.pkg.transfer?.name ?? 'Airport transfers' },
+            tours: { title: entry.pkg.tours?.label ?? 'Tours' },
+          }),
+          legs: [legTimeline(entry, legPriced)].filter(Boolean),
+        })),
+        ...(trip.home
+          ? [
+              {
+                key: 'home',
+                cards: [
+                  {
+                    key: 'home',
+                    icon: PRODUCTS.flight.icon,
+                    eyebrow: PRODUCTS.flight.eyebrow,
+                    title: `${itinerary[itinerary.length - 1].toCode} → ${search.fromCode} · ${trip.home.airline}`,
+                    meta: [trip.home.route],
+                    price: trip.home.bundled,
+                  },
+                ],
+                legs: [homeTimeline()].filter(Boolean),
+              },
+            ]
+          : []),
+      ]
+    : [
+        {
+          key: selected.slug,
+          cards: linesToCards(priced.lines, {
+            flight: {
+              title: `${search.fromCode} → ${destCode} · ${flight.name.split(' · ')[0]}`,
+              meta: [`${fare.label} · ${fare.bags}`],
+            },
+            hotel: {
+              title: `${hotel.name} · ${plural(nights, 'night')}`,
+              meta: [
+                `${room.name} · ${room.board} · ${room.beds}`,
+                `Check-in ${formatWeekday(search.departDate)} · Check-out ${formatWeekday(search.returnDate)}`,
+              ],
+            },
+            transfer: { title: selected.transfer?.name ?? 'Airport transfers' },
+            tours: { title: selected.tours?.label ?? 'Tours' },
+          }),
+          legs: singleLegs(),
+        },
+      ];
+
+  /** The rail's product line, one per flight on the trip. */
+  const railProducts = isMultiDestination
+    ? [
+        ...trip.legPrices.map(({ entry, priced: legPriced }) => {
+          const timeline = legTimeline(entry, legPriced);
+          return {
+            key: entry.id,
+            title: `${legPriced.flight.name.split(' · ')[0]} · ${entry.fromCode} → ${entry.toCode}`,
+            times: timeline ? `${timeline.leg.departTime} – ${timeline.leg.arriveTime}` : null,
+          };
+        }),
+        ...(trip.home
+          ? [
+              {
+                key: 'home',
+                title: `${trip.home.airline} · ${itinerary[itinerary.length - 1].toCode} → ${search.fromCode}`,
+                times: (() => {
+                  const t = homeTimeline();
+                  return t ? `${t.leg.departTime} – ${t.leg.arriveTime}` : null;
+                })(),
+              },
+            ]
+          : []),
+      ]
+    : [
+        {
+          key: 'flight',
+          title: `${flight.name.split(' · ')[0]} · ${search.fromCode} → ${destCode}`,
+          times: `${AUTHORED_OUTBOUND.departTime} – ${AUTHORED_OUTBOUND.arriveTime}`,
+        },
+      ];
 
   /** The trip in one line: the whole route on a multi-city trip, the booked
    *  package on a single-destination one. */
@@ -510,7 +1078,7 @@ export default function Checkout() {
         </div>
 
         <div className="layout">
-          <div className="tierside">
+          <div className="tierstrip">
             <div className="tierside-head">
               {isMultiDestination
                 ? 'Your itinerary'
@@ -583,259 +1151,329 @@ export default function Checkout() {
           </div>
 
           <main>
-            <div className="card">
-              <div className="cardhead">
-                <h2>
-                  <span className="stepnum">1</span>Traveller Details
-                </h2>
-              </div>
-
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-                Have an account?{' '}
-                <a
-                  href="#"
-                  style={{ color: 'var(--brand-500)', fontWeight: 600 }}
-                  onClick={inert}
-                >
-                  Log in for faster checkout
-                </a>
-              </div>
-
-              <div className="frow">
-                <div className="f">
-                  <label htmlFor="contact-email">Email address</label>
-                  <input
-                    id="contact-email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                <div className="f">
-                  <label htmlFor="contact-phone">Phone number</label>
-                  <input
-                    id="contact-phone"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {travellers.map((t, i) => (
-                <Fragment key={i}>
-                  <div className="travname">
-                    {i === 0 ? 'Lead traveller · Adult 1' : `Adult ${i + 1}`}
-                  </div>
-                  <div className="upload">
-                    📄{' '}
-                    <div>
-                      <b>Upload passport to auto-fill</b>
-                      <br />
-                      <small>AI will extract name, DOB, nationality & passport details</small>
-                    </div>
-                    <button type="button" className="addbtn">
-                      Upload
-                    </button>
-                  </div>
-                  <div className="frow3">
-                    <div className="f">
-                      <label htmlFor={`t${i}-title`}>Title</label>
-                      <select
-                        id={`t${i}-title`}
-                        value={t.title}
-                        onChange={(e) => updateTraveller(i, 'title', e.target.value)}
-                      >
-                        {TITLES.map((o) => (
-                          <option key={o}>{o}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="f">
-                      <label htmlFor={`t${i}-first`}>First name</label>
-                      <input
-                        id={`t${i}-first`}
-                        value={t.firstName}
-                        onChange={(e) => updateTraveller(i, 'firstName', e.target.value)}
-                      />
-                    </div>
-                    <div className="f">
-                      <label htmlFor={`t${i}-last`}>Last name</label>
-                      <input
-                        id={`t${i}-last`}
-                        value={t.lastName}
-                        onChange={(e) => updateTraveller(i, 'lastName', e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="frow3">
-                    <div className="f">
-                      <label htmlFor={`t${i}-dob`}>Date of birth</label>
-                      <input
-                        id={`t${i}-dob`}
-                        value={t.dob}
-                        onChange={(e) => updateTraveller(i, 'dob', e.target.value)}
-                      />
-                    </div>
-                    <div className="f">
-                      <label htmlFor={`t${i}-gender`}>Gender</label>
-                      <select
-                        id={`t${i}-gender`}
-                        value={t.gender}
-                        onChange={(e) => updateTraveller(i, 'gender', e.target.value)}
-                      >
-                        {GENDERS.map((o) => (
-                          <option key={o}>{o}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="f">
-                      <label htmlFor={`t${i}-nationality`}>Nationality</label>
-                      <select
-                        id={`t${i}-nationality`}
-                        value={t.nationality}
-                        onChange={(e) => updateTraveller(i, 'nationality', e.target.value)}
-                      >
-                        {NATIONALITIES.map((o) => (
-                          <option key={o}>{o}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {i === 0 && (
-                    <div className="prime">
-                      <b>Prime perks:</b> Save your details for faster checkout next time, track
-                      bookings from your dashboard, and unlock member-only fares.{' '}
-                      <label style={{ marginLeft: '8px' }}>
-                        <input
-                          type="checkbox"
-                          checked={createProfile}
-                          onChange={(e) => setCreateProfile(e.target.checked)}
-                        />{' '}
-                        Create a profile for me
-                      </label>
-                    </div>
+            {/* ── 1 Booking Summary ──────────────────────────────────────── */}
+            <Section
+              num="1"
+              title="Booking Summary"
+              note={
+                isMultiDestination
+                  ? `${itinerary.length} destinations`
+                  : `${selected.city} · ${dateLabel}`
+              }
+            >
+              {summaryBlocks.map((block, blockIndex) => (
+                <Fragment key={block.key}>
+                  {block.cards.map((card) => (
+                    <LineCard key={card.key} {...card} onRemove={editInBuilder} />
+                  ))}
+                  {block.legs.length > 0 && (
+                    <ItineraryCard
+                      legs={block.legs}
+                      cabinLine={cabinLine}
+                      // The rules belong to the fare, and the fare is the same
+                      // one all the way through, so they are stated once — under
+                      // the last itinerary card on the trip.
+                      rules={blockIndex === summaryBlocks.length - 1 ? fareRules : null}
+                    />
                   )}
                 </Fragment>
               ))}
+            </Section>
 
-              <div className="terms">
-                By proceeding, you agree you have read and accepted our{' '}
-                <a href="#" onClick={inert}>
-                  Stays
-                </a>{' '}
-                and our{' '}
-                <a href="#" onClick={inert}>
-                  Travel Terms & Conditions
-                </a>{' '}
-                and our{' '}
-                <a href="#" onClick={inert}>
-                  Privacy Policy
-                </a>
-                .
+            {/* ── 2 Traveller Details ────────────────────────────────────── */}
+            <Section num="2" title="Traveller Details">
+              <div className="card">
+                <div className="loginline">
+                  Have an account?{' '}
+                  <a href="#" onClick={inert}>
+                    Log in for faster checkout
+                  </a>
+                </div>
+
+                <h3 className="blockhead">Contact Information</h3>
+                <p className="blocksub">Booking confirmation will be sent to this email</p>
+
+                <div className="frow">
+                  <div className="f">
+                    <label htmlFor="contact-email">Email Address</label>
+                    <input
+                      id="contact-email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="f">
+                    <label htmlFor="contact-phone">Phone Number</label>
+                    {/* Flag, dial code and number read as one bordered control,
+                        the way the live field does. */}
+                    <div className="phonegroup">
+                      <span className="pg-flag" aria-hidden="true">
+                        {DIAL_CODES.find((d) => d.code === dialCode)?.flag}
+                      </span>
+                      <select
+                        aria-label="Dial code"
+                        value={dialCode}
+                        onChange={(e) => setDialCode(e.target.value)}
+                      >
+                        {DIAL_CODES.map((d) => (
+                          <option key={d.code}>{d.code}</option>
+                        ))}
+                      </select>
+                      <input
+                        id="contact-phone"
+                        value={localNumber}
+                        onChange={(e) => setLocalNumber(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {travellers.map((t, i) => {
+                  const dob = dobParts(t.dob);
+                  return (
+                    <Fragment key={i}>
+                      <h3 className="travhead">
+                        {i === 0 ? 'Lead Traveller' : `Traveller ${i + 1}`}
+                        <span>Adult {i + 1}</span>
+                      </h3>
+
+                      {/* Upload passport: the blue dashed panel from the live
+                          form, with the extraction promise spelled out. */}
+                      <div className="uploadpanel">
+                        <span className="up-ic" aria-hidden="true">📄</span>
+                        <div className="up-copy">
+                          <b>Upload passport to auto-fill</b>
+                          <span>
+                            AI will extract name, DOB, nationality &amp; passport details for this
+                            traveller
+                          </span>
+                        </div>
+                        <button type="button" className="up-btn">
+                          + Upload
+                        </button>
+                      </div>
+
+                      <div className="frow4">
+                        <div className="f">
+                          <label htmlFor={`t${i}-title`}>Title</label>
+                          <select
+                            id={`t${i}-title`}
+                            value={t.title}
+                            onChange={(e) => updateTraveller(i, 'title', e.target.value)}
+                          >
+                            {TITLES.map((o) => (
+                              <option key={o}>{o}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="f">
+                          <label htmlFor={`t${i}-first`}>First Name</label>
+                          <input
+                            id={`t${i}-first`}
+                            placeholder="As on passport/ID"
+                            value={t.firstName}
+                            onChange={(e) => updateTraveller(i, 'firstName', e.target.value)}
+                          />
+                        </div>
+                        <div className="f">
+                          <label htmlFor={`t${i}-last`}>Last Name</label>
+                          <input
+                            id={`t${i}-last`}
+                            placeholder="As on passport/ID"
+                            value={t.lastName}
+                            onChange={(e) => updateTraveller(i, 'lastName', e.target.value)}
+                          />
+                        </div>
+                        <div className="f">
+                          <label htmlFor={`t${i}-middle`}>Middle Name (optional)</label>
+                          <input
+                            id={`t${i}-middle`}
+                            placeholder="As on passport/ID"
+                            value={t.middleName ?? ''}
+                            onChange={(e) => updateTraveller(i, 'middleName', e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="frow3">
+                        <div className="f">
+                          <label htmlFor={`t${i}-dob-day`}>Date of Birth</label>
+                          <div className="dobgroup">
+                            <select
+                              id={`t${i}-dob-day`}
+                              aria-label="Day of birth"
+                              value={dob.day}
+                              onChange={(e) => updateDob(i, 'day', e.target.value)}
+                            >
+                              <option value="">Day</option>
+                              {DAY_OPTIONS.map((d) => (
+                                <option key={d}>{d}</option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label="Month of birth"
+                              value={dob.month}
+                              onChange={(e) => updateDob(i, 'month', e.target.value)}
+                            >
+                              <option value="">Month</option>
+                              {MONTHS_SHORT.map((m) => (
+                                <option key={m}>{m}</option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label="Year of birth"
+                              value={dob.year}
+                              onChange={(e) => updateDob(i, 'year', e.target.value)}
+                            >
+                              <option value="">Year</option>
+                              {YEAR_OPTIONS.map((y) => (
+                                <option key={y}>{y}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="f">
+                          <span className="flabel">Gender</span>
+                          <div className="pillgroup" role="radiogroup" aria-label={`Gender, traveller ${i + 1}`}>
+                            {GENDERS.map((g) => (
+                              <button
+                                key={g}
+                                type="button"
+                                role="radio"
+                                aria-checked={t.gender === g}
+                                className={t.gender === g ? 'pill on' : 'pill'}
+                                onClick={() => updateTraveller(i, 'gender', g)}
+                              >
+                                <i aria-hidden="true" />
+                                {g}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="f">
+                          <label htmlFor={`t${i}-nationality`}>Nationality</label>
+                          <div className="flagselect">
+                            <span aria-hidden="true">{FLAGS[t.nationality] ?? '🌍'}</span>
+                            <select
+                              id={`t${i}-nationality`}
+                              value={t.nationality}
+                              onChange={(e) => updateTraveller(i, 'nationality', e.target.value)}
+                            >
+                              {NATIONALITIES.map((o) => (
+                                <option key={o}>{o}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {i === 0 && (
+                        <label className={createProfile ? 'profilepanel on' : 'profilepanel'}>
+                          <input
+                            type="checkbox"
+                            checked={createProfile}
+                            onChange={(e) => setCreateProfile(e.target.checked)}
+                          />
+                          <div>
+                            <div className="pp-head">
+                              <b>Create a profile for me</b>
+                              <span className="primechip">★ Prime Perks</span>
+                            </div>
+                            <div className="pp-sub">
+                              Save your details for faster checkout next time, track bookings from
+                              your dashboard, and unlock member-only fares.
+                            </div>
+                          </div>
+                        </label>
+                      )}
+                    </Fragment>
+                  );
+                })}
+
+                <label className="terms">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  />
+                  <span>
+                    By proceeding, you agree you have read and accepted our{' '}
+                    <a href="#" onClick={inert}>
+                      Stays
+                    </a>{' '}
+                    and our{' '}
+                    <a href="#" onClick={inert}>
+                      Travel Terms &amp; Conditions
+                    </a>{' '}
+                    and our{' '}
+                    <a href="#" onClick={inert}>
+                      Privacy Policy
+                    </a>
+                    .
+                  </span>
+                </label>
               </div>
-            </div>
+            </Section>
 
-            <div className="card">
-              <div className="cardhead">
-                <h2>
-                  <span className="stepnum">2</span>Enhance Your Trip
-                </h2>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  All add-ons are optional
-                </span>
-              </div>
-
-              {offersTransferAddon && (
-                <div className="addon">
-                  <Toggle
+            {/* ── 3 Enhance Your Trip ────────────────────────────────────── */}
+            <Section num="3" title="Enhance Your Trip" note="All add-ons are optional">
+              <div className="card addoncard">
+                {offersTransferAddon && (
+                  <AddonRow
+                    icon={ADDON_ICONS.transfer}
+                    title="Careem · private airport transfers"
+                    isNew
+                    desc={`Both ways · meet and greet at ${destCode} arrivals · up to 4 passengers`}
+                    price="₦90,000"
+                    was="₦94,000 separately"
                     on={addons.transfer}
-                    label="Careem private airport transfers"
                     onToggle={() => toggleAddon('transfer')}
                   />
-                  <div>
-                    <h4>
-                      Careem · private airport transfers<span className="new">New</span>
-                    </h4>
-                    <p>
-                      Both ways · meet and greet at {destCode} arrivals · up to 4 passengers
-                    </p>
-                  </div>
-                  <div className="price">
-                    <b>₦90,000</b>
-                    <s>₦94,000 separately</s>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {tourRow && (
-                <div className="addon">
-                  <Toggle
+                {tourRow && (
+                  <AddonRow
+                    icon={ADDON_ICONS.safari}
+                    title={tourLabel ?? tourRow.title}
+                    isNew
+                    desc={tourRow.meta}
+                    price={naira(tourRow.price)}
+                    was={`${naira(tourRow.separate)} separately`}
                     on={addons.safari}
-                    label={tourLabel ?? tourRow.title}
                     onToggle={() => toggleAddon('safari')}
                   />
-                  <div>
-                    <h4>
-                      {tourLabel ?? tourRow.title}
-                      <span className="new">New</span>
-                    </h4>
-                    <p>{tourRow.meta}</p>
-                  </div>
-                  <div className="price">
-                    <b>{naira(tourRow.price)}</b>
-                    <s>{naira(tourRow.separate)} separately</s>
-                  </div>
-                </div>
-              )}
+                )}
 
-              <div className="addon">
-                <Toggle
+                <AddonRow
+                  icon={ADDON_ICONS.callReminder}
+                  title="Call Reminder"
+                  desc="Receive call reminders for your flights and stay updated with schedule changes"
+                  price="₦2,500"
                   on={addons.callReminder}
-                  label="Call Reminder"
                   onToggle={() => toggleAddon('callReminder')}
                 />
-                <div>
-                  <h4>Call Reminder</h4>
-                  <p>Receive call reminders for your flights and stay updated with schedule changes</p>
-                </div>
-                <div className="price">
-                  <b>₦2,500</b>
-                </div>
-              </div>
 
-              <div className="addon">
-                <Toggle
+                <AddonRow
+                  icon={ADDON_ICONS.smsReminder}
+                  title="SMS Reminder"
+                  desc="Get SMS reminders for your flight and stay informed about changes"
+                  price="₦2,000"
                   on={addons.smsReminder}
-                  label="SMS Reminder"
                   onToggle={() => toggleAddon('smsReminder')}
                 />
-                <div>
-                  <h4>SMS Reminder</h4>
-                  <p>Get SMS reminders for your flight and stay informed about changes</p>
-                </div>
-                <div className="price">
-                  <b>₦2,000</b>
-                </div>
-              </div>
 
-              <div className="addon">
-                <Toggle
+                <AddonRow
+                  icon={ADDON_ICONS.kalabash}
+                  title="Kalabash Platinum Travel Card"
+                  desc="Purchase the Kalabash USD Platinum card — global payment and cashback. Delivery included."
+                  price="₦4,500"
                   on={addons.kalabash}
-                  label="Kalabash Platinum Travel Card"
                   onToggle={() => toggleAddon('kalabash')}
                 />
-                <div>
-                  <h4>Kalabash Platinum Travel Card</h4>
-                  <p>
-                    Purchase the Kalabash USD Platinum card — global payment and cashback. Delivery
-                    included.
-                  </p>
-                </div>
-                <div className="price">
-                  <b>₦4,500</b>
-                </div>
               </div>
-            </div>
+            </Section>
 
             {visaAddon && (
               <VisaCard
@@ -929,10 +1567,19 @@ export default function Checkout() {
               </div>
             </div>
 
+            {/* Payment keeps its card but loses its number: the live cart numbers
+                exactly three sections, and payment is where this prototype hands
+                off rather than a step it owns. */}
             <div className="card">
               <div className="cardhead">
                 <h2>
-                  <span className="stepnum">3</span>Payment
+                  <span className="stepnum stepglyph" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="5" y="11" width="14" height="9" rx="2" />
+                      <path d="M8.5 11V8a3.5 3.5 0 017 0v3" />
+                    </svg>
+                  </span>
+                  Payment
                 </h2>
               </div>
               <div className="paylock">
@@ -946,131 +1593,63 @@ export default function Checkout() {
           </main>
 
           <aside className="sidebar">
+            {/* The peach hold banner sits ABOVE the rail card on the live cart,
+                not inside a dark summary header. */}
+            <div className="holdbar">
+              <span aria-hidden="true">⏱</span>
+              Price held for <b>{formatClock(secondsLeft)}</b>
+            </div>
+
             <div className="summary">
-              <div className="sumhead">
-                <h2>Booking Summary</h2>
-                <div className="timer">
-                  ⏱ Price held for <b>{formatClock(secondsLeft)}</b>
-                </div>
-              </div>
-
               <div className="sumbody">
-                {isMultiDestination ? (
-                  <>
-                    {/* One group per destination: its hotel, its flight in, and
-                        its transfer where the package carries one. */}
-                    {trip.legPrices.map(({ entry, priced: legPriced }) => {
-                      const lineOf = (key) => legPriced.lines.find((l) => l.key === key);
-                      const transferLine = lineOf('transfer');
-                      return (
-                        <div className="sumgroup" key={entry.id}>
-                          <h3>
-                            <span className="ic">🌍</span> {entry.toCity} ·{' '}
-                            {plural(entry.nights, 'night')}
-                          </h3>
-                          <div className="summeta">🏨 {legPriced.hotel.name}</div>
-                          <div className="summeta">
-                            {legPriced.room.name} · {legPriced.room.board} · {legPriced.room.beds}
-                          </div>
-                          <div className="summeta">
-                            Check-in {formatWeekday(entry.startDate)} · Check-out{' '}
-                            {formatWeekday(entry.endDate)}
-                          </div>
-                          <div className="sumprice">{naira(lineOf('hotel').bundled)}</div>
+                {railProducts.map((product) => (
+                  <div className="railprod" key={product.key}>
+                    <span className="rp-ic" aria-hidden="true">
+                      <PlaneGlyph />
+                    </span>
+                    <div>
+                      <b>{product.title}</b>
+                      {product.times && <span>{product.times}</span>}
+                    </div>
+                  </div>
+                ))}
 
-                          <div className="summeta" style={{ marginTop: '10px' }}>
-                            ✈ {entry.fromCity} → {entry.toCity} ·{' '}
-                            {legPriced.flight.name.split(' · ')[0]} · {legPriced.fare.label}
-                          </div>
-                          <div className="sumprice">{naira(lineOf('flight').bundled)}</div>
+                <div className="railrule" />
 
-                          {transferLine && (
-                            <>
-                              <div className="summeta" style={{ marginTop: '10px' }}>
-                                🚐 {entry.pkg.transfer.name}
-                              </div>
-                              <div className="sumprice">{naira(transferLine.bundled)}</div>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {trip.home && (
-                      <div className="sumgroup">
-                        <h3>
-                          <span className="ic">✈</span> {trip.home.label}
-                        </h3>
-                        <div className="summeta">
-                          {trip.home.route} · {trip.home.airline}
-                        </div>
-                        <div className="sumprice">{naira(trip.home.bundled)}</div>
+                {/* ── The fare breakdown ───────────────────────────────────
+                    The live rail splits a flight fare into Flights / Taxes /
+                    Service Charge. This prototype has no tax or service-charge
+                    field and inventing one would either move the total or put a
+                    made-up split in front of the team, so the block keeps the
+                    live LAYOUT — label/value rows, a subtotal, the green fee
+                    line, a dashed rule, the add-ons, then the total — and fills
+                    it with this product's real component lines. Every figure
+                    below is one the screen already computed. */}
+                {componentGroups.map((group) => (
+                  <Fragment key={group.key}>
+                    {group.title && (
+                      <div className="bline">
+                        <span>{group.strong ? <b>{group.title}</b> : group.title}</span>
                       </div>
                     )}
-                  </>
-                ) : (
-                  <>
-                    <div className="sumgroup">
-                      <h3>
-                        <span className="ic">🏨</span> Hotel
-                      </h3>
-                      <div className="summeta">
-                        {hotel.name} · {plural(nights, 'night')}
+                    {group.lines.map((line) => (
+                      <div className="bline" key={line.key}>
+                        <span>{line.label}</span>
+                        <b>{naira(line.amount)}</b>
                       </div>
-                      <div className="summeta">
-                        {room.name} · {room.board} · {room.beds}
-                      </div>
-                      <div className="summeta">
-                        Check-in {formatWeekday(search.departDate)} · Check-out{' '}
-                        {formatWeekday(search.returnDate)}
-                      </div>
-                      <div className="sumprice">{naira(room.nightly * nights)}</div>
-                    </div>
+                    ))}
+                  </Fragment>
+                ))}
 
-                    <div className="sumgroup">
-                      <h3>
-                        <span className="ic">✈</span> Flight
-                      </h3>
-                      <div className="summeta">
-                        {search.fromCode} → {destCode} · {flight.name} · {fare.label}
-                      </div>
-                      {/* Clock times stay as authored — the tiers carry fares, not a timetable. */}
-                      <div className="leg">
-                        <div>
-                          <span className="time">14:45</span>
-                          <br />
-                          <span className="code">{search.fromCode}</span>
-                        </div>
-                        <div>
-                          <span className="dur">14h 45m · 1 stop</span>
-                        </div>
-                        <div>
-                          <span className="time">08:30</span>
-                          <br />
-                          <span className="code">{destCode}</span>
-                        </div>
-                      </div>
-                      {/* What the cabin actually includes, rather than the flight's
-                          authored baggage string — the fare is what was bought. */}
-                      <div className="summeta" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                        {fare.bags} · {fare.seat} · {fare.changeable || 'No changes'} ·{' '}
-                        {fare.refundable || 'Non-refundable'}
-                      </div>
-                      <div className="sumprice">{naira(fare.price)}</div>
-                    </div>
-
-                    {selected.transfer && (
-                      <div className="sumgroup">
-                        <h3>
-                          <span className="ic">🚐</span> Airport transfer
-                          <span className="new">New</span>
-                        </h3>
-                        <div className="summeta">{selected.transfer.name}</div>
-                        <div className="sumprice">{naira(selected.transfer.price)}</div>
-                      </div>
-                    )}
-                  </>
-                )}
+                <div className="bline disc">
+                  <span>
+                    Package savings
+                    <span className="new" style={{ marginLeft: '4px' }}>
+                      New
+                    </span>
+                  </span>
+                  <b>−{naira(packageSavings)}</b>
+                </div>
 
                 <div className="savings">
                   <span className="ic">🏷</span>
@@ -1091,65 +1670,49 @@ export default function Checkout() {
                   </div>
                 </div>
 
-                <div className="sumgroup" style={{ paddingBottom: 0 }}>
-                  {/* A multi-city breakdown reads by destination: a bold city
-                      line, that leg's components, then the flight home. */}
-                  {componentGroups.map((group) => (
-                    <Fragment key={group.key}>
-                      {group.title && (
-                        <div className="bline">
-                          <span>{group.strong ? <b>{group.title}</b> : group.title}</span>
-                        </div>
-                      )}
-                      {group.lines.map((line) => (
-                        <div className="bline" key={line.key}>
-                          <span>{line.label}</span>
-                          <b>{naira(line.amount)}</b>
-                        </div>
-                      ))}
-                    </Fragment>
-                  ))}
-
-                  <div className="bline disc">
-                    <span>
-                      Package savings
-                      <span className="new" style={{ marginLeft: '4px' }}>
-                        New
-                      </span>
-                    </span>
-                    <b>−{naira(packageSavings)}</b>
-                  </div>
-
-                  {activeExtras.length > 0 && <div style={{ height: '8px' }} />}
-
-                  {packageLines.map((item) => (
-                    <div className="bline" key={item.key}>
-                      <span>
-                        {item.label}
-                        {item.perTraveller && payingTravellers > 1
-                          ? ` × ${payingTravellers}`
-                          : ''}
-                        {item.isNew && (
-                          <span className="new" style={{ marginLeft: '4px' }}>
-                            New
-                          </span>
-                        )}
-                      </span>
-                      <b>{naira(extraAmount(item, payingTravellers))}</b>
-                    </div>
-                  ))}
-                  {packageLines.length > 0 && <div style={{ height: '4px' }} />}
-
-                  {existingLines.map((item) => (
-                    <div className="bline" key={item.key}>
-                      <span>{item.label}</span>
-                      <b>{naira(extraAmount(item, payingTravellers))}</b>
-                    </div>
-                  ))}
-                  {existingLines.length > 0 && <div style={{ height: '4px' }} />}
+                {/* The first of the live rail's two totals. Named for what it is
+                    — the package before add-ons — rather than a bare "Total"
+                    that would be untrue twice on one card. */}
+                <div className="btotal">
+                  <span>Package total</span>
+                  <b>{naira(base)}</b>
                 </div>
+                <div className="nohidden">No hidden fees — price includes all taxes</div>
 
-                <div className="bline" style={{ alignItems: 'center', gap: '8px' }}>
+                {activeExtras.length > 0 && (
+                  <>
+                    <div className="railrule dashed" />
+                    <h3 className="railhead">Selected add-ons</h3>
+
+                    {packageLines.map((item) => (
+                      <div className="bline" key={item.key}>
+                        <span>
+                          {item.label}
+                          {item.perTraveller && payingTravellers > 1
+                            ? ` × ${payingTravellers}`
+                            : ''}
+                          {item.isNew && (
+                            <span className="new" style={{ marginLeft: '4px' }}>
+                              New
+                            </span>
+                          )}
+                        </span>
+                        <b>{naira(extraAmount(item, payingTravellers))}</b>
+                      </div>
+                    ))}
+
+                    {existingLines.map((item) => (
+                      <div className="bline" key={item.key}>
+                        <span>{item.label}</span>
+                        <b>{naira(extraAmount(item, payingTravellers))}</b>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                <div className="railrule dashed" />
+
+                <div className="bline promoline">
                   <div className="f" style={{ flex: 1 }}>
                     <input
                       aria-label="Promo code"
@@ -1172,7 +1735,7 @@ export default function Checkout() {
                     </button>
                   )}
                 </div>
-                {promoError && <div className="nohidden">That code isn't recognised.</div>}
+                {promoError && <div className="promoerr">That code isn't recognised.</div>}
                 {promo && (
                   <div className="bline disc">
                     <span>{PROMOS[promo].label}</span>
@@ -1180,11 +1743,10 @@ export default function Checkout() {
                   </div>
                 )}
 
-                <div className="btotal">
+                <div className="btotal grand">
                   <span>Total</span>
                   <b>{naira(dueTotal)}</b>
                 </div>
-                <div className="nohidden">No hidden fees — price includes all taxes</div>
 
                 <div
                   className={pssSelected ? 'pssbox sel' : 'pssbox'}
@@ -1241,7 +1803,13 @@ export default function Checkout() {
                     </button>
                   </div>
                 ) : (
-                  <button type="button" className="paybtn" onClick={() => setHandedOff(true)}>
+                  <button
+                    type="button"
+                    className="paybtn"
+                    disabled={!acceptedTerms}
+                    title={acceptedTerms ? undefined : 'Accept the terms above to continue'}
+                    onClick={() => setHandedOff(true)}
+                  >
                     Proceed to Pay {naira(dueTotal)}
                   </button>
                 )}

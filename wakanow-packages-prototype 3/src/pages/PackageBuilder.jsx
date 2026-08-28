@@ -5,6 +5,9 @@ import BackBar from '../components/BackBar.jsx';
 import DateRangePicker from '../components/DateRangePicker.jsx';
 import FlightCard from '../components/FlightCard.jsx';
 import FlightSort from '../components/FlightSort.jsx';
+import HotelCard from '../components/HotelCard.jsx';
+import RoomGrid from '../components/RoomGrid.jsx';
+import VisaCheck from '../components/VisaCheck.jsx';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { flightCard, sortFlights, sortSummary } from '../lib/flights.js';
 import { delta, naira, nairaShort } from '../lib/format.js';
@@ -22,8 +25,9 @@ const LEG_STEPS = [
   { kind: 'tours', label: 'Tours' },
 ];
 
-/** The card art in the generated stylesheet, cycled so every option gets one. */
-const IMG = ['i1', 'i2', 'i3', 'i4', 'i5'];
+/** The passport countries the search offers, mirrored on the visa step's
+ *  Check Requirements panel — nationality is what the visa rule turns on. */
+const NATIONALITIES = ['Nigeria', 'Ghana', 'United Kingdom', 'United States', 'South Africa'];
 
 const TIERS = [
   { name: 'Essential', mod: 'ess', slug: 'tier-essential', price: 1486000, save: 85000 },
@@ -99,16 +103,6 @@ function reconcileSelections(itinerary, prev) {
   return next;
 }
 
-/** The mockup's feature pills, derived from what the package record actually says. */
-function hotelFeats(entry, hotel) {
-  const room = findRoom(hotel);
-  return [
-    room?.board ?? 'Room only',
-    `Free cancel until ${formatShort(addDays(entry.startDate, -entry.pkg.freeCancelDays))}`,
-    hotel.eligible === false ? 'Not in the bundle' : 'Bundle eligible',
-  ];
-}
-
 /** The stylesheet selects the mockup's clickable cards by tag (`.opt`, `.topt`,
  *  `.stp`, `.mo`), so they keep those elements and pick up button/radio
  *  semantics from props rather than becoming <button>s. */
@@ -126,44 +120,6 @@ function activatable(onActivate, extra) {
   };
 }
 
-/** Hotels and flights share one card shape. Hotel prices depend on the trip
- *  length, so the caller passes the resolved stay cost rather than the card
- *  reading a fixed figure off the record. */
-function OptionCard({ item, img, feats, price, selectedPrice, selected, note, metaExtra, onSelect }) {
-  const diff = price - selectedPrice;
-  const caption = selected
-    ? note
-    : `${diff > 0 ? '+' : '−'} ${naira(Math.abs(diff))} vs selected`;
-
-  return (
-    <article
-      className={selected ? 'opt sel' : 'opt'}
-      {...activatable(onSelect, { role: 'radio', 'aria-checked': selected })}
-    >
-      <div className={`img ${img}`} />
-      <div className="body">
-        <h3>{item.name}</h3>
-        <div className="meta">
-          {item.meta}
-          {metaExtra}
-        </div>
-        <div className="feats">
-          {feats.map((feat) => (
-            <span className="feat" key={feat}>
-              {feat}
-            </span>
-          ))}
-        </div>
-      </div>
-      <div className="price">
-        <div className="amt">{naira(price)}</div>
-        <div className="delta">{caption}</div>
-        <span className="smark">Selected</span>
-      </div>
-    </article>
-  );
-}
-
 export default function PackageBuilder() {
   const navigate = useNavigate();
   const {
@@ -172,6 +128,7 @@ export default function PackageBuilder() {
     routeLabel,
     payingTravellers,
     search,
+    setSearch,
     setDates,
     setTier,
     setBookingSlug,
@@ -630,61 +587,39 @@ export default function PackageBuilder() {
                   </p>
                 )}
 
+                {/* Mirrors wakanow.com's hotel results: a card per hotel with
+                    the image flush to its left edge, the rating badge opposite
+                    the name and the three ways to pay across the bottom. The
+                    chosen hotel opens the live "Choose your room" grid inside
+                    its own card. */}
                 <div role="radiogroup" aria-label="Hotel">
                   {entry.pkg.hotels.map((item, i) => (
-                    <Fragment key={item.id}>
-                      <OptionCard
-                        item={item}
-                        img={IMG[i % IMG.length]}
-                        feats={hotelFeats(entry, item)}
-                        price={item.nightly * entry.nights}
-                        selected={item.id === hotel.id}
-                        // Every hotel is quoted at its own default room, so the
-                        // cards stay comparable with each other; the package
-                        // carries the chosen room's cost.
-                        selectedPrice={hotel.nightly * entry.nights}
-                        note={
-                          item.eligible === false
-                            ? 'not in the bundle'
-                            : `${naira(item.nightlySeparate * entry.nights)} separately`
-                        }
-                        metaExtra={` · ${naira(item.nightly)} a night`}
-                        onSelect={() => selectHotel(item.id)}
-                      />
-                      {/* The rooms hang under the hotel they belong to, so the
-                          second choice reads as part of that card rather than
-                          as three more hotels. */}
+                    <HotelCard
+                      key={item.id}
+                      hotel={item}
+                      nights={entry.nights}
+                      // Every hotel is quoted at its own default room, so the
+                      // cards stay comparable with each other; the package
+                      // carries the chosen room's cost.
+                      stayPrice={item.nightly * entry.nights}
+                      plate={(i % 5) + 1}
+                      selected={item.id === hotel.id}
+                      onSelect={() => selectHotel(item.id)}
+                      priceNote={
+                        item.eligible === false
+                          ? 'Not in the bundle'
+                          : `${naira(item.nightlySeparate * entry.nights)} booked separately · free cancellation until ${formatShort(addDays(entry.startDate, -entry.pkg.freeCancelDays))}`
+                      }
+                    >
                       {item.id === hotel.id && (
-                        <>
-                          <p className="stnote">Room type</p>
-                          <div role="radiogroup" aria-label="Room type">
-                            {item.rooms.map((r) => (
-                              <article
-                                key={r.id}
-                                className={r.id === room.id ? 'topt sel' : 'topt'}
-                                {...activatable(() => patchSel(entry.id, { roomId: r.id }), {
-                                  role: 'radio',
-                                  'aria-checked': r.id === room.id,
-                                })}
-                              >
-                                <div className="body">
-                                  <h3>{r.name}</h3>
-                                  <div className="meta">
-                                    {r.board} · {r.beds} · sleeps {r.sleeps}
-                                  </div>
-                                </div>
-                                <div className="price">
-                                  <div className="amt">{naira(r.nightly * entry.nights)}</div>
-                                  <div className="ref" style={{ textDecoration: 'none' }}>
-                                    {naira(r.nightly)} a night
-                                  </div>
-                                </div>
-                              </article>
-                            ))}
-                          </div>
-                        </>
+                        <RoomGrid
+                          hotel={item}
+                          nights={entry.nights}
+                          selectedRoomId={room.id}
+                          onSelect={(roomId) => patchSel(entry.id, { roomId })}
+                        />
                       )}
-                    </Fragment>
+                    </HotelCard>
                   ))}
                 </div>
 
@@ -931,6 +866,16 @@ export default function PackageBuilder() {
                 <div className="sthead">
                   <h1>{visas.length > 1 ? 'Visas' : 'Visa'}</h1>
                 </div>
+
+                <VisaCheck
+                  nationality={search.nationality}
+                  nationalities={NATIONALITIES}
+                  onNationality={(country) => setSearch({ nationality: country })}
+                  destinations={itinerary.map((leg) => leg.toCity).join(' · ')}
+                  needed={visas}
+                  travellerName="Adaeze Okonkwo"
+                  email="adaeze.okonkwo@gmail.com"
+                />
                 {visas.length === 0 ? (
                   <>
                     <p className="stnote">

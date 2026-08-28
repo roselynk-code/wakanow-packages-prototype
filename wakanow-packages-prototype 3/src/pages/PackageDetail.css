@@ -61,30 +61,127 @@
 .pg-detail .btn-orange{background:var(--accent-400);color:#fff;border-radius:var(--r-pill);padding:9px 18px;font-size:13.5px;font-weight:700;box-shadow:var(--shadow-cta-orange)}
 .pg-detail .btn-orange:hover{background:#E08213}
 
-/* gallery */
-.pg-detail .gallery{display:grid;grid-template-columns:2fr 1fr 1fr;grid-template-rows:150px 150px;gap:6px;margin-top:20px;border-radius:var(--r-card);overflow:hidden}
-.pg-detail .shot{position:relative}
-.pg-detail .shot span{position:absolute;left:10px;bottom:9px;font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.5)}
-.pg-detail .shot:nth-child(1){grid-row:1/3;background:linear-gradient(150deg,#0B3C8C,#1C7FD6 55%,#F7941D)}
-.pg-detail .shot:nth-child(2){background:linear-gradient(150deg,#123A6B,#3E86C8)}
-.pg-detail .shot:nth-child(3){background:linear-gradient(150deg,#1C3E6B,#C99A55)}
-.pg-detail .shot:nth-child(4){background:linear-gradient(150deg,#08304F,#4E7FB4)}
-.pg-detail .shot:nth-child(5){background:linear-gradient(150deg,#12325C,#E09A45)}
-.pg-detail .shot:nth-child(1) svg{position:absolute;bottom:0;left:0;width:100%;height:76px;opacity:.30}
-.pg-detail .morephotos{position:absolute;right:10px;bottom:9px;background:rgba(255,255,255,.94);color:var(--brand-500);font-size:12px;font-weight:600;padding:6px 11px;border-radius:var(--r-button)}
+/* ───── THE LIVE HOTEL-DETAIL UPPER STRUCTURE ─────
+   Hand-written — NOT produced by tools/scope-css.mjs, so `npm run scope-css`
+   will not overwrite it. The structure and the stated values come from
+   SCREEN-SPECS §C, which was read off the live hotel-detail page
+   (wakanow.com/hotels/<id>); anything the spec does not name is this page's
+   own existing scale, and is called out below where that matters:
+
+     sub-nav       white band, hairline bottom, 56px, sticky at the viewport
+                   top; pills 13.5px/600 on a transparent rail, the active one
+                   a white pill with a hairline and a soft shadow
+     Select a room #F7941D, --r-button, 14px/700 — the one orange on the band,
+                   and the same accent FlightCard.css spends on "Book Now"
+     breadcrumbs   BackBar already renders them, 12.5px links
+     title         34px/800 at -1.1px  (the prototype's own 40px was its
+                   invention; the live page is a step smaller)
+     distance      13.5px/600 --brand-500, no underline until hover
+     mosaic        grid 2fr 1fr 1fr over 2 rows, 8px gaps, --r-card per plate,
+                   left plate spanning both rows; plate heights 2×154 + the gap
+     rating card   white, hairline, --r-card, 260px; badge 46px --r-small in
+                   --accent-400 carrying the figure at 19px/800 white
+     chips         white pills, hairline, --r-small, 12px/500
+     description   cream #FFFBF2, --r-card, 22px; body 13.5px/21px muted; the
+                   tick list two columns at 13px with a green ✓
+     map card      white, hairline, --r-card; the plate is a flat tinted panel
+                   with a hairline grid — deliberately NOT a picture of a map,
+                   because there is no map tile and no coordinate to place
+     policies      label/value rows split by hairlines, then #F2F6F9 panels at
+                   --r-button, 20px, title 15px/700 over 13px muted body
+
+   Selectors stay qualified with .pg-detail like the rest of this stylesheet:
+   the reset at `.pg-detail *` sits at the same specificity as a bare class, so
+   an unqualified rule here would win or lose on bundle order alone. */
+
+/* The sticky rail's own height plus a little air, so a pill's scrollIntoView
+   does not park the section heading underneath the band. */
+.pg-detail .anchor{scroll-margin-top:74px}
+
+.pg-detail .subnav{position:sticky;top:0;z-index:30;background:#fff;border-bottom:1px solid var(--border-default)}
+.pg-detail .subnav .wrap{display:flex;align-items:center;gap:16px;height:56px}
+.pg-detail .subpills{display:flex;align-items:center;gap:4px;margin-right:auto;min-width:0;overflow-x:auto}
+.pg-detail .subpill{background:transparent;color:var(--text-secondary);font-size:13.5px;font-weight:600;padding:8px 15px;border-radius:var(--r-pill);white-space:nowrap;transition:background .15s var(--ease),color .15s var(--ease)}
+.pg-detail .subpill:hover{background:var(--surface-page);color:var(--text-primary)}
+.pg-detail .subpill.on{background:#fff;color:var(--text-primary);border:1px solid var(--border-subtle);box-shadow:var(--sh-card)}
+/* Orange here is the live page's own choice for "Select a room": a booking
+   verb on a navigation band, not the page's primary. The rail's blue
+   "Book this package" stays the primary and calls the same handler. */
+.pg-detail .subcta{flex-shrink:0;background:var(--accent-400);color:#fff;border-radius:var(--r-button);padding:10px 18px;font-size:14px;font-weight:700;box-shadow:var(--shadow-cta-orange);transition:background .15s var(--ease)}
+.pg-detail .subcta:hover{background:#E08213}
 
 .pg-detail .title{display:flex;align-items:flex-start;gap:20px;margin-top:22px}
-/* The page H1 — the landing hero runs 48px/800/-1.7px, so this takes the same
-   weight and tracking a step down for a title sitting on the light page. */
-.pg-detail .title h1{font-size:40px;font-weight:800;letter-spacing:-1.4px;line-height:1.08}
+.pg-detail .title h1{font-size:34px;font-weight:800;letter-spacing:-1.1px;line-height:1.1}
 .pg-detail .title .sub{font-size:14px;color:var(--text-secondary);margin-top:9px}
-.pg-detail .pills{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}
-.pg-detail .pill{background:#fff;border:1px solid var(--border-default);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 11px;border-radius:var(--r-pill)}
-.pg-detail .pill.deal{background:var(--deal-bg);color:var(--deal);border-color:transparent;font-weight:700}
-.pg-detail .pill.ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok-border);font-weight:600}
+/* The blue distance link. A button, not an anchor: it moves the page rather
+   than leaving it, and there is no property URL to point at. */
+.pg-detail .distlink{display:inline-block;background:none;padding:0;margin-top:7px;color:var(--brand-500);font-size:13.5px;font-weight:600;text-align:left}
+.pg-detail .distlink:hover{text-decoration:underline}
 .pg-detail .titleacts{margin-left:auto;display:flex;gap:8px;flex-shrink:0}
 .pg-detail .iconbtn{background:#fff;border:1px solid var(--border-medium);color:var(--text-secondary);border-radius:var(--r-button);padding:9px 15px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
 .pg-detail .iconbtn svg{width:14px;height:14px}
+
+/* ── Mosaic + rating card ── */
+.pg-detail .herorow{display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start;margin-top:18px}
+.pg-detail .herorow.norate{grid-template-columns:1fr}
+.pg-detail .mosaic{display:grid;grid-template-columns:2fr 1fr 1fr;grid-template-rows:154px 154px;gap:8px}
+.pg-detail .plate{position:relative;border-radius:var(--r-card);overflow:hidden}
+.pg-detail .plate:first-child{grid-row:1/3}
+.pg-detail .plate span{position:absolute;left:11px;bottom:10px;font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.pg-detail .plate:first-child span{font-size:13px}
+.pg-detail .plate svg{position:absolute;bottom:0;left:0;width:100%;height:76px;opacity:.30}
+
+.pg-detail .ratecard{background:#fff;border:1px solid var(--border-default);border-radius:var(--r-card);box-shadow:var(--sh-card);padding:18px;display:flex;gap:13px;align-items:flex-start}
+.pg-detail .ratebadge{width:46px;height:46px;flex-shrink:0;display:grid;place-items:center;border-radius:var(--r-small,8px);background:var(--accent-400);color:#fff;font-family:var(--font-heading);font-size:19px;font-weight:800;letter-spacing:-.4px}
+.pg-detail .ratebody{min-width:0}
+.pg-detail .ratebody b{display:block;font-family:var(--font-heading);font-size:15px;font-weight:800}
+.pg-detail .ratebody span{display:block;font-size:12.5px;color:var(--text-secondary);margin-top:2px;line-height:17px}
+.pg-detail .ratebody em{display:block;font-style:normal;font-size:11px;color:var(--text-muted);margin-top:5px;line-height:15px}
+
+/* ── Chip row ── */
+.pg-detail .chiprow{display:flex;gap:7px;flex-wrap:wrap;margin-top:16px}
+.pg-detail .chip{background:#fff;border:1px solid var(--border-default);color:var(--text-secondary);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--r-small,8px)}
+.pg-detail .chip.deal{background:var(--deal-bg);color:var(--deal);border-color:transparent;font-weight:700}
+.pg-detail .chip.ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok-border);font-weight:600}
+
+/* ── Description panel + map card ── */
+.pg-detail .aboutrow{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start;margin-top:16px}
+.pg-detail .descpanel{background:#FFFBF2;border:1px solid #F3E4C6;border-radius:var(--r-card);padding:22px}
+.pg-detail .descrate{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--text-secondary);margin-bottom:12px}
+.pg-detail .descrate b{display:grid;place-items:center;min-width:38px;height:28px;border-radius:var(--r-badge);background:var(--accent-400);color:#fff;font-family:var(--font-heading);font-size:14px;font-weight:800}
+.pg-detail .descpanel p{font-size:13.5px;color:var(--text-secondary);line-height:21px}
+.pg-detail .ticks{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:7px 20px;margin-top:16px}
+.pg-detail .ticks li{position:relative;padding-left:20px;font-size:13px;color:var(--text-primary);line-height:19px}
+.pg-detail .ticks li::before{content:'✓';position:absolute;left:0;top:0;color:var(--ok);font-weight:700;font-size:12px}
+.pg-detail .morelink{background:none;padding:0;margin-top:16px;color:var(--brand-500);font-size:13.5px;font-weight:600}
+.pg-detail .morelink:hover{text-decoration:underline}
+
+.pg-detail .mapcard{background:#fff;border:1px solid var(--border-default);border-radius:var(--r-card);box-shadow:var(--sh-card);overflow:hidden}
+/* A tinted panel with a hairline grid and a single pin — enough to read as
+   "where", without pretending to be a map of anywhere in particular. Layer
+   order matters: the two grids are listed first so they paint over the flat
+   ground beneath them. */
+.pg-detail .mapplate{height:150px;position:relative;background:
+  repeating-linear-gradient(90deg,rgba(0,75,190,.10) 0 1px,transparent 1px 34px),
+  repeating-linear-gradient(0deg,rgba(0,75,190,.10) 0 1px,transparent 1px 34px),
+  linear-gradient(#EEF5FF,#EEF5FF)}
+.pg-detail .mapplate .mappin{position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--brand-500);box-shadow:0 0 0 6px rgba(0,75,190,.12)}
+.pg-detail .mapfoot{padding:16px 18px}
+.pg-detail .mapfoot b{display:block;font-family:var(--font-heading);font-size:15px;font-weight:700}
+.pg-detail .mapfoot span{display:block;font-size:13px;color:var(--text-secondary);margin-top:2px}
+.pg-detail .mapfoot em{display:block;font-style:normal;font-size:11px;color:var(--text-muted);margin-top:8px;line-height:16px}
+.pg-detail .mapbtn{margin-top:12px;background:#fff;border:1px solid var(--border-medium);color:var(--text-secondary);border-radius:var(--r-button);padding:9px 15px;font-size:13px;font-weight:600}
+.pg-detail .mapbtn:hover{border-color:var(--brand-500);color:var(--brand-500)}
+
+/* ── Policies ── */
+.pg-detail .polrow{display:flex;align-items:flex-start;gap:16px;padding:13px 0;border-bottom:1px solid var(--border-default)}
+.pg-detail .polrow > span{width:110px;flex-shrink:0;font-size:13px;color:var(--text-muted)}
+.pg-detail .polrow b{display:block;font-family:var(--font-heading);font-size:15px;font-weight:600}
+.pg-detail .polrow em{display:block;font-style:normal;font-size:12px;color:var(--text-muted);margin-top:2px}
+.pg-detail .polpanels{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+.pg-detail .polpanel{background:var(--surface-page);border-radius:var(--r-button);padding:20px}
+.pg-detail .polpanel h3{font-size:15px;font-weight:700}
+.pg-detail .polpanel p{font-size:13px;color:var(--text-secondary);line-height:20px;margin-top:6px}
 
 .pg-detail .layout{display:grid;grid-template-columns:1fr 372px;gap:24px;margin-top:26px;align-items:start;padding-bottom:56px}
 
@@ -190,9 +287,9 @@
 @media(max-width:1080px){
   .pg-detail .layout{grid-template-columns:1fr}
   .pg-detail .rail{position:static}
-  .pg-detail .gallery{grid-template-columns:1fr 1fr;grid-template-rows:130px 130px}
-  .pg-detail .gallery .shot:nth-child(1){grid-row:1/2;grid-column:1/3}
-  .pg-detail .gallery .shot:nth-child(4),.pg-detail .gallery .shot:nth-child(5){display:none}
+  /* The rating card and the map card drop below the thing they annotate rather
+     than squeezing it: the mosaic is the point of the row. */
+  .pg-detail .herorow,.pg-detail .aboutrow{grid-template-columns:1fr}
   .pg-detail .title h1{font-size:30px;letter-spacing:-1px}
 }
 @media(max-width:640px){
@@ -203,5 +300,13 @@
   .pg-detail .titleacts{margin-left:0}
   .pg-detail .comphead{flex-wrap:wrap}
   .pg-detail .comphead .price{margin-left:51px}
+  /* Two rows of two, the tall plate across the top; the fifth plate is the one
+     that goes, because four keeps the grid square. */
+  .pg-detail .mosaic{grid-template-columns:1fr 1fr;grid-template-rows:130px 130px}
+  .pg-detail .plate:first-child{grid-row:1/2;grid-column:1/3}
+  .pg-detail .plate:nth-child(5){display:none}
+  .pg-detail .ticks,.pg-detail .polpanels{grid-template-columns:1fr}
+  .pg-detail .subnav .wrap{gap:10px}
+  .pg-detail .subcta{padding:9px 13px;font-size:13px}
 }
 @media(prefers-reduced-motion:reduce){.pg-detail, .pg-detail *{transition:none!important}}

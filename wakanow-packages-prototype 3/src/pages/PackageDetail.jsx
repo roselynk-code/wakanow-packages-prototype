@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useTrip } from '../state/useTrip.js';
 import { naira, delta } from '../lib/format.js';
-import { addDays, formatShort } from '../lib/dates.js';
+import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { findPackage, isTier } from '../data/packages.js';
 import { pricePackage, findFlight, findHotel, findFare, findRoom } from '../lib/pricing.js';
 import BackBar from '../components/BackBar.jsx';
@@ -14,6 +14,66 @@ const NAV = ['Flights', 'Hotels', 'Packages', 'Tours', 'Visa', 'Business'];
 
 const EXIT_WARNING =
   'Not part of the bundle. Choosing this drops the package price and you pay each part separately.';
+
+/**
+ * The live hotel page's sticky sub-nav. `Rooms` points at "What's in this
+ * package" — that section is where this screen lets you change the hotel and
+ * the room, so it is the honest target for the pill even though the package
+ * page has no room grid of its own.
+ */
+const SUBNAV = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'about', label: 'About' },
+  { id: 'rooms', label: 'Rooms' },
+  { id: 'policies', label: 'Policies' },
+];
+
+/**
+ * The live page prints a measured distance under the title — "4690m from
+ * Murtala Muhammed International Airport". A package record holds no
+ * coordinates and no distance field, so there is nothing here to measure.
+ * What the hotels *do* carry is a location clause inside their own authored
+ * `meta` / `desc`: "900m from Dubai Mall", "a minute from Souq Waqif", "ten
+ * minutes from the Blue Mosque". Where one segment states a separation from a
+ * named place it is quoted back verbatim; where none does, the link is
+ * dropped. Nothing is converted into metres and no number is invented — most
+ * hotels in the catalogue simply do not get the link.
+ */
+const DISTANCE_CLAUSE =
+  /^(?:\d+(?:\.\d+)?\s?(?:m|km)|(?:\d+|a|an|one|two|three|four|five|ten|fifteen|twenty)\s+(?:minutes?|mins?|metres?|meters?))\s+(?:walk\s+)?from\s+.+$/i;
+
+function distanceFrom(hotel) {
+  const segments = `${hotel.meta ?? ''} · ${hotel.desc ?? ''}`.split(' · ');
+  const hit = segments.map((s) => s.trim()).find((s) => DISTANCE_CLAUSE.test(s));
+  return hit ?? null;
+}
+
+/**
+ * The live rating card carries a guest score ("3.0 / Good"). No package or
+ * hotel record in this prototype holds a review score, and putting one on the
+ * page would be fabricating a rating for a named hotel. The one rating a
+ * record does state is the star classification written into the hotel's own
+ * name — "Rove Downtown Dubai · 4★" — so that is what the card shows, said
+ * plainly as a star rating. A hotel whose name carries no star drops the card.
+ */
+function starsOf(hotel) {
+  const match = (hotel.name ?? '').match(/(\d)\s?★/);
+  return match ? Number(match[1]) : null;
+}
+
+/** The hotel's name without the trailing star classification. */
+function hotelPlainName(hotel) {
+  return (hotel.name ?? '').replace(/\s*·\s*\d\s?★/, '');
+}
+
+const VISA_POLICY = {
+  included: (pkg, nationality) =>
+    `The visa for ${pkg.country} is part of this package. Wakanow files the application on a ${nationality} passport and collects your documents after payment.`,
+  default: (pkg, nationality, hasVisaAddon) =>
+    `You need a visa for ${pkg.country} on a ${nationality} passport. Wakanow can apply on your behalf${
+      hasVisaAddon ? ' — the application is one of the add-ons above' : ''
+    }. If you already hold a valid visa, leave it off.`,
+};
 
 /**
  * Lay the authored itinerary entries across the trip the traveller actually
@@ -124,6 +184,7 @@ export default function PackageDetail() {
   } = useTrip();
 
   const [ui, setUi] = useState(() => freshSelection(pkg));
+  const [activeSection, setActiveSection] = useState(SUBNAV[0].id);
 
   // One screen serves every package, so nothing chosen on one may be carried
   // into the next. Resetting during render rather than in an effect means the
@@ -138,6 +199,29 @@ export default function PackageDetail() {
     const opened = findPackage(slug);
     if (!isTier(opened)) setTripLength(opened.nights);
   }, [slug, setTripLength]);
+
+  // The sub-nav's active pill follows the scroll. A section counts as current
+  // once its top has passed under the sticky rail, so the last one whose top
+  // is above that line wins — which keeps the pill honest at the bottom of the
+  // page too, where the final section can never reach the top of the viewport.
+  useEffect(() => {
+    const mark = () => {
+      const line = 96; // nav-independent: the sticky rail's own bottom edge
+      let current = SUBNAV[0].id;
+      for (const item of SUBNAV) {
+        const el = document.getElementById(item.id);
+        if (el && el.getBoundingClientRect().top <= line) current = item.id;
+      }
+      setActiveSection(current);
+    };
+    mark();
+    window.addEventListener('scroll', mark, { passive: true });
+    window.addEventListener('resize', mark);
+    return () => {
+      window.removeEventListener('scroll', mark);
+      window.removeEventListener('resize', mark);
+    };
+  }, [slug]);
 
   const {
     flightId,
@@ -178,6 +262,97 @@ export default function PackageDetail() {
   const itinerary = layOutItinerary(pkg.itinerary, days);
   const freeCancelDate = formatShort(addDays(search.departDate, -pkg.freeCancelDays));
   const hasVisaAddon = Boolean(pkg.addons?.some((a) => a.id === 'visa'));
+
+  const stars = starsOf(hotel);
+  const distance = distanceFrom(hotel);
+  const board = room?.board ?? null;
+
+  /**
+   * The live page's chip row lists hotel facilities — Free Wifi, Parking,
+   * Non smoking rooms. A package record carries no facility list, and putting
+   * one on the page would be inventing amenities for a named hotel. These
+   * chips are instead the things the record actually states about this trip:
+   * the bundle saving, the free-cancellation window, the cabin, the board
+   * basis, the transfer, the visa handling and the package's own vibes.
+   */
+  const chips = [
+    eligible && { key: 'deal', tone: 'deal', label: `Save ${naira(priced.save)} as a package` },
+    { key: 'cancel', tone: 'ok', label: `Free cancellation until ${freeCancelDate}` },
+    fare && { key: 'cabin', label: fare.cabin },
+    board && { key: 'board', label: board },
+    pkg.transfer && { key: 'transfer', label: pkg.transfer.name },
+    pkg.visa !== 'none' && {
+      key: 'visa',
+      label: pkg.visa === 'included' ? 'Visa included' : 'Visa handled by Wakanow',
+    },
+    ...(pkg.vibes ?? []).map((vibe) => ({ key: `vibe-${vibe}`, label: vibe })),
+  ].filter(Boolean);
+
+  /** The description panel's tick list — one line per part the package states. */
+  const inclusions = [
+    flight.meta,
+    `${nightsLabel} at ${hotel.name}`,
+    room && `${room.name} · ${room.board} · sleeps ${room.sleeps}`,
+    pkg.transfer && pkg.transfer.name,
+    pkg.tours && `${pkg.tours.label} — ${pkg.tours.desc}`,
+    ...(pkg.bundledExtras ?? []),
+    `Free cancellation until ${freeCancelDate}`,
+    pkg.visa === 'included' ? `Visa for ${pkg.country} included` : null,
+  ].filter(Boolean);
+
+  /**
+   * The spec's policy panels are `Meals`, `Children and information about extra
+   * beds`, `Special living conditions`, `Transfer` and `Extra info`. Only the
+   * ones a real field can fill are built: board fills Meals, the transfer
+   * record fills Transfer, the room's bed and occupancy fill Extra info, and
+   * the free-cancellation window and visa status get panels of their own
+   * because those are the two policies this product genuinely has. Children /
+   * extra beds and special living conditions are dropped — nothing in the
+   * catalogue states either, and a policy is the last thing to guess at.
+   */
+  const policyPanels = [
+    board && {
+      title: 'Meals',
+      body:
+        board === 'Room only'
+          ? `No meals are included — the rate at ${hotel.name} is room only.`
+          : `${board}, every night of the stay at ${hotel.name}.`,
+    },
+    {
+      title: 'Free cancellation',
+      body: `Cancel free until ${freeCancelDate} — ${pkg.freeCancelDays} days before departure.`,
+    },
+    pkg.visa !== 'none' && {
+      title: 'Visa',
+      body:
+        pkg.visa === 'included'
+          ? VISA_POLICY.included(pkg, search.nationality)
+          : VISA_POLICY.default(pkg, search.nationality, hasVisaAddon),
+    },
+    pkg.transfer && {
+      title: 'Transfer',
+      body: `${pkg.transfer.name}. ${pkg.transfer.desc}.`,
+    },
+    room && {
+      title: 'Extra info',
+      body: `${room.name} — ${room.beds}, sleeps ${room.sleeps}. ${room.note}.`,
+    },
+  ].filter(Boolean);
+
+  const goToSection = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    setActiveSection(id);
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const viewOnMap = () =>
+    window.open(
+      'https://www.google.com/maps/search/?api=1&query=' +
+        encodeURIComponent(`${pkg.city}, ${pkg.country}`),
+      '_blank',
+      'noopener',
+    );
 
   const toggleAddon = (id) =>
     setUi((prev) => ({
@@ -278,7 +453,35 @@ export default function PackageDetail() {
         </div>
       </nav>
 
-      {/* No backTo: this screen is reached from results, the catalogue and the
+      {/* The live hotel page's sticky sub-nav, sitting between the main nav and
+          the breadcrumbs. Its far-right action is the page's booking verb — the
+          same `book` the rail's button calls — standing in for the live page's
+          orange "Select a room". */}
+      <nav className="subnav" aria-label="On this page">
+        <div className="wrap">
+          <div className="subpills">
+            {SUBNAV.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={'subpill' + (activeSection === item.id ? ' on' : '')}
+                aria-current={activeSection === item.id ? 'true' : undefined}
+                onClick={() => goToSection(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="subcta" onClick={book}>
+            Book this package
+          </button>
+        </div>
+      </nav>
+
+      {/* The breadcrumb row the live page carries under the sub-nav. BackBar is
+          already that row on every screen below the landing page, and it keeps
+          the explicit way back that the live crumbs leave to the browser.
+          No backTo: this screen is reached from results, the catalogue and the
           landing page, so history is the honest way back. */}
       <BackBar
         trail={[
@@ -289,37 +492,21 @@ export default function PackageDetail() {
       />
 
       <div className="wrap">
-        <div className="gallery">
-          {pkg.gallery.map((shot, i) => (
-            <div className="shot" key={shot.caption} style={{ background: shot.gradient }}>
-              <span>{shot.caption}</span>
-              {i === 0 && pkg.gallery[0].skyline && (
-                <svg viewBox="0 0 400 80" preserveAspectRatio="none" fill="#001845">
-                  <path d="M0 80V54h22V30h10V14h8v16h12v24h26V40h30v14h18V26h12v28h34V46h24v8h30V22h10v32h28V44h30v10h26V34h14v20h36v26z" />
-                </svg>
-              )}
-              {i === pkg.gallery.length - 1 && (
-                <button type="button" className="morephotos">+18 photos</button>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="title">
+        <div className="title anchor" id="overview">
           <div>
             <h1>{pkg.name}</h1>
             <div className="sub">
               {nightsLabel} · {dateLabelWithYear} · departing {search.fromCity} · {paxLabel}
             </div>
-            <div className="pills">
-              {eligible && <span className="pill deal">Save {naira(priced.save)} as a package</span>}
-              <span className="pill ok">✓ Free cancellation until {freeCancelDate}</span>
-              {/* The flight and hotel names are already the component headings
-                  below, so the pills carry what the drawers now decide. */}
-              <span className="pill">{fare ? fare.cabin : flight.name}</span>
-              <span className="pill">{room ? room.board : hotel.name}</span>
-              {pkg.transfer && <span className="pill">{pkg.transfer.name}</span>}
-            </div>
+            {/* The live page's blue distance link. Rendered only when the chosen
+                hotel's own record states a separation from a named place —
+                see `distanceFrom`. Most hotels do not, and then there is no
+                link rather than a guessed number. */}
+            {distance && (
+              <button type="button" className="distlink" onClick={() => goToSection('about')}>
+                {hotelPlainName(hotel)} — {distance}
+              </button>
+            )}
           </div>
           <div className="titleacts">
             <DateRangePicker
@@ -361,9 +548,98 @@ export default function PackageDetail() {
           </div>
         </div>
 
+        {/* Photo mosaic — one tall plate left, four smaller right. There are no
+            photographs in this prototype, so each plate is the gallery entry's
+            own `gradient` with its authored caption over it, exactly as the
+            gallery strip used them. */}
+        <div className={'herorow' + (stars ? '' : ' norate')}>
+          <div className="mosaic">
+            {pkg.gallery.map((shot, i) => (
+              <div className="plate" key={shot.caption} style={{ background: shot.gradient }}>
+                <span>{shot.caption}</span>
+                {i === 0 && shot.skyline && (
+                  <svg viewBox="0 0 400 80" preserveAspectRatio="none" fill="#001845">
+                    <path d="M0 80V54h22V30h10V14h8v16h12v24h26V40h30v14h18V26h12v28h34V46h24v8h30V22h10v32h28V44h30v10h26V34h14v20h36v26z" />
+                  </svg>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* The rating card. `stars` is read out of the hotel's own name; the
+              sub-line says so, because a star classification is not the guest
+              score the live card shows and must not be dressed as one. */}
+          {stars ? (
+            <aside className="ratecard">
+              <div className="ratebadge">{stars.toFixed(1)}</div>
+              <div className="ratebody">
+                <b>{stars}-star hotel</b>
+                <span>{hotelPlainName(hotel)}</span>
+                <em>Star classification, not a guest review score</em>
+              </div>
+            </aside>
+          ) : null}
+        </div>
+
+        <div className="chiprow">
+          {chips.map((chip) => (
+            <span key={chip.key} className={'chip' + (chip.tone ? ' ' + chip.tone : '')}>
+              {chip.label}
+            </span>
+          ))}
+        </div>
+
+        <div className="aboutrow anchor" id="about">
+          <div className="descpanel">
+            {stars ? (
+              <div className="descrate">
+                <b>{stars.toFixed(1)}</b> {stars}-star hotel
+              </div>
+            ) : null}
+            {/* Every sentence here is the record's own copy: the package blurb,
+                the chosen hotel's authored meta, and the chosen flight. The
+                room and the rest of the parts are the tick list below, which is
+                where the live panel puts them too. */}
+            <p>
+              {pkg.blurb} {nightsLabel} at {hotel.name} — {hotel.meta}. Flying {flight.name} from{' '}
+              {search.fromCity}.
+            </p>
+            <ul className="ticks">
+              {inclusions.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {/* The live link opens the property's own page. There is none here,
+                so it goes to the section that describes the property — the same
+                place the Rooms pill reaches. */}
+            <button type="button" className="morelink" onClick={() => goToSection('rooms')}>
+              See more about this property →
+            </button>
+          </div>
+
+          {/* Map card. No map tile is available offline and a package record
+              carries neither an address nor coordinates, so this is a plain
+              placeholder panel naming the destination — not a picture of a map.
+              The live card's address and lat/lng lines are dropped for want of
+              the fields; `View on map` hands the destination to a real map. */}
+          <div className="mapcard">
+            <div className="mapplate" aria-hidden="true">
+              <i className="mappin" />
+            </div>
+            <div className="mapfoot">
+              <b>{pkg.city}</b>
+              <span>{pkg.country}</span>
+              <em>No map tile in this prototype — a package record holds no coordinates.</em>
+              <button type="button" className="mapbtn" onClick={viewOnMap}>
+                View on map
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="layout">
           <main>
-            <section className="sec">
+            <section className="sec anchor" id="rooms">
               <div className="sechead">
                 <h2>What's in this package</h2>
                 <span className="note">Change the flight or hotel and keep the bundle price</span>
@@ -557,7 +833,7 @@ export default function PackageDetail() {
               ))}
             </section>
 
-            <section className="sec">
+            <section className="sec anchor" id="addons">
               <div className="sechead">
                 <h2>Add anything else you need</h2>
                 <span className="note">Price updates as you go</span>
@@ -591,7 +867,7 @@ export default function PackageDetail() {
               ))}
             </section>
 
-            <section className="sec">
+            <section className="sec anchor" id="itinerary">
               <div className="sechead"><h2>Your {days} days</h2></div>
               {itinerary.map((row) => (
                 <div className="itin" key={row.key}>
@@ -601,6 +877,37 @@ export default function PackageDetail() {
                   </p>
                 </div>
               ))}
+            </section>
+
+            <section className="sec anchor" id="policies">
+              <div className="sechead"><h2>Policies</h2></div>
+
+              {/* Check-in and check-out. No record holds a hotel's own hours, so
+                  the values are the trip's real dates and the second line says
+                  which date it is rather than inventing a "from 14:00". */}
+              <div className="polrow">
+                <span>Check-in</span>
+                <div>
+                  <b>{formatWeekday(search.departDate)}</b>
+                  <em>Your outbound date · the hotel sets the hour</em>
+                </div>
+              </div>
+              <div className="polrow">
+                <span>Check-out</span>
+                <div>
+                  <b>{formatWeekday(search.returnDate)}</b>
+                  <em>Your return date · the hotel sets the hour</em>
+                </div>
+              </div>
+
+              <div className="polpanels">
+                {policyPanels.map((panel) => (
+                  <div className="polpanel" key={panel.title}>
+                    <h3>{panel.title}</h3>
+                    <p>{panel.body}</p>
+                  </div>
+                ))}
+              </div>
             </section>
           </main>
 
