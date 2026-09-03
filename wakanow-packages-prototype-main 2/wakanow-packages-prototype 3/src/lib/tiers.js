@@ -87,7 +87,7 @@ function visaLine(pkg, nationality) {
   const rule = fulfilmentRule(pkg, nationality);
   return {
     icon: '🛂',
-    title: rule ? `Visa · via ${rule.partner}` : 'Visa · optional add-on',
+    title: rule ? `Visa · via ${rule.channelLabel}` : 'Visa · optional add-on',
     sub: rule
       ? `${nairaShort(addon.price)} · documents before payment`
       : `${nairaShort(addon.price)} if you need it`,
