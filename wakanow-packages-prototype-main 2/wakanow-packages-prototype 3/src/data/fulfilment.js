@@ -29,6 +29,14 @@
  * the immersion is that documents are collected BEFORE payment. The Holidays
  * team receives a complete submission and executes it; it never chases a
  * customer who has already paid.
+ *
+ * Collected before payment is the DEFAULT, not a wall. A traveller who does not
+ * have a stamped bank statement in the room with them cannot produce one by
+ * being refused the next button, and a builder that dead-ends there loses a
+ * booking it had already won. So the step offers both: send everything now in
+ * one go, or say you will send it later and carry a stated deadline. What never
+ * moves is the sequencing promise — the application is filed from a COMPLETE
+ * file, and the lead time runs from that file, not from the payment.
  */
 
 /* ── The table ──────────────────────────────────────────────────────────── */
@@ -141,6 +149,42 @@ export function documentStatus(rule, uploaded = {}) {
   const done = (rule?.documents ?? []).filter((doc) => uploaded[doc.id]).length;
   return { done, total, complete: total > 0 && done === total };
 }
+
+/** The documents on a rule that have not arrived yet, in the rule's own order. */
+export function outstandingDocuments(rule, uploaded = {}) {
+  return (rule?.documents ?? []).filter((doc) => !uploaded[doc.id]);
+}
+
+/**
+ * Documents that are the same file whatever the destination.
+ *
+ * A passport bio page is a passport bio page; a Nigerian traveller doing Doha
+ * and Singapore in one trip should not upload it twice because our data model
+ * happens to key documents by leg. Anything NOT in this list is destination
+ * specific — Singapore's Form 14A is the live example — and is collected per
+ * leg.
+ */
+export const SHARED_DOCUMENT_IDS = ['passport', 'photo', 'funds'];
+
+/**
+ * How long a traveller has when they choose to send documents later.
+ *
+ * Stated in one place because three surfaces say it — the visa step, the
+ * outstanding-documents note and checkout — and a deadline that drifts between
+ * screens is a deadline nobody believes.
+ */
+export const DOCUMENT_DEADLINE = 'within 5 working days of booking';
+
+/**
+ * What deferring actually costs, said plainly.
+ *
+ * Not a threat and not fine print: the traveller is choosing between two real
+ * sequences, and the only honest way to let them choose is to state the second
+ * one. The visa is not refused for being late — it simply is not filed until
+ * the file is complete, and the lead time starts there.
+ */
+export const DEFERRED_LANGUAGE =
+  'The application is filed once the file is complete, and the lead time runs from that point — not from your payment.';
 
 /**
  * Application, never approval.
