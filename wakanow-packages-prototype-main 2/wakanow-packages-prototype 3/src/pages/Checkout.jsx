@@ -475,17 +475,15 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
         <div style={{ fontSize: '12px', color: '#7A5300', lineHeight: '18px' }}>
           {rule && status.complete ? (
             <>
-              {rule.summary} Your documents are already with us — they were collected in the
-              builder, before payment — so the application is filed through{' '}
-              {rule.channelLabel} as soon as this payment clears, and takes {rule.leadTime} from
-              there. {APPLICATION_LANGUAGE}
+              {rule.customerSummary} Your documents are already with us, so the application
+              goes in as soon as this payment clears and takes {rule.leadTime} from there.{' '}
+              {APPLICATION_LANGUAGE}
             </>
           ) : rule ? (
             <>
-              {rule.summary} You chose to send your documents later, so {status.done} of{' '}
-              {status.total} are with us. They are due {DOCUMENT_DEADLINE}, and you can pay
-              now. {DEFERRED_LANGUAGE} Filing through {rule.channelLabel} takes {rule.leadTime}{' '}
-              from a complete submission. {APPLICATION_LANGUAGE}
+              {rule.customerSummary} You chose to send your documents later, so {status.done}{' '}
+              of {status.total} are with us. They are due {DOCUMENT_DEADLINE}, and you can pay
+              now. {DEFERRED_LANGUAGE} {APPLICATION_LANGUAGE}
             </>
           ) : (
             <>
@@ -1402,11 +1400,11 @@ export default function Checkout() {
                     }}
                   >
                     <b style={{ color: '#8A5A00' }}>
-                      {row.city} hotel and transfers booked through {row.rule.channelLabel}
+                      {row.city} hotel and transfers arranged for you
                     </b>
                     <div>
-                      {row.rule.partnerNote}. Confirmation comes from Wakanow as usual — you have
-                      nothing to arrange with them yourself.
+                      Confirmation comes from Wakanow as usual — there is nothing for you to
+                      arrange separately.
                     </div>
                   </div>
                 ))}
@@ -1959,11 +1957,6 @@ export default function Checkout() {
 
                 {/* Same trip, same number as the builder. Said plainly, because
                     the customer's own arithmetic is what builds trust here. */}
-                {booking && matchesQuote && (
-                  <div className="pricelock">
-                    ✓ This is the same total you were shown when you built the trip.
-                  </div>
-                )}
                 {/* If the trip on screen no longer matches the quote — because
                     something was changed here — the difference is named rather
                     than left for the customer to find. */}
@@ -2089,8 +2082,7 @@ export default function Checkout() {
                       lineHeight: '18px',
                     }}
                   >
-                    Your trip is held. This preview stops here — on the live site you would go
-                    straight to Wakanow’s secure payment page.
+                    Your trip is held. You’ll be taken to secure payment next.
                     {/* Refund terms restated after payment, with the promise
                         that makes a refusal a phone call rather than a wait.
                         Repetition is the point: this is the copy a customer

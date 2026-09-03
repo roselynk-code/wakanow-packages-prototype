@@ -451,7 +451,7 @@ export default function LandingPage() {
                     <button className="cta" onClick={() => navigate(route)}>
                       Start with this trip
                     </button>
-                    <div className="ctahint">Opens builder with parts pre-filled</div>
+                    <div className="ctahint">Hotel and flight already chosen</div>
                   </div>
                 </article>
               );
@@ -501,7 +501,7 @@ export default function LandingPage() {
 
       <footer>
         <div className="wrap">
-          Wakanow Packages · Preview · Prices are illustrative
+          Wakanow Packages · Prices are illustrative
         </div>
       </footer>
     </div>

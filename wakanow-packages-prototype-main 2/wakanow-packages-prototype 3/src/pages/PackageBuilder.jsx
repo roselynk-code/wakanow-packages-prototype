@@ -716,8 +716,7 @@ export default function PackageBuilder() {
                     </div>
                   ))}
                   <div className="tierbox-f">
-                    Auto-generated tiers cover single-destination trips only. A multi-city trip is
-                    priced from the legs above.
+                    Your trip is priced from the destinations above.
                   </div>
                 </>
               ) : (
@@ -739,9 +738,8 @@ export default function PackageBuilder() {
                         {party.rooms === 1 ? '' : 's'}
                       </b>
                       <p>
-                        These hotels sleep {maxPerRoom} per room, so you need {roomsNeeded} rooms.
-                        Prices below still show {party.rooms} room
-                        {party.rooms === 1 ? '' : 's'} until you add {roomsNeeded - party.rooms} more.
+                        These rooms sleep {maxPerRoom} people. You need {roomsNeeded} rooms
+                        for {party.travellers} travellers.
                       </p>
                       <button
                         type="button"
@@ -804,7 +802,7 @@ export default function PackageBuilder() {
                   })}
                   <div className="tierbox-f">
                     {tiers[0]?.composed
-                      ? 'Composed just now from live prices for your dates. Choosing one fills the build below — everything stays editable.'
+                      ? 'Choose one to start — everything stays editable.'
                       : 'Built just now from live prices for your dates. Selecting one goes straight to checkout — everything stays editable there.'}
                   </div>
                 </>
@@ -890,26 +888,11 @@ export default function PackageBuilder() {
                     the name and the three ways to pay across the bottom. The
                     chosen hotel opens the live "Choose your room" grid inside
                     its own card. */}
-                {legRule?.landChannel && (
-                  <div className="dfr">
-                    <h4>
-                      <span className="dfr-tag">Official channel</span>
-                      {entry.toCity} hotels are booked through {legRule.channelLabel}
-                    </h4>
-                    <p>
-                      {legRule.summary} {legRule.partnerNote}, so this is arranged inside your
-                      package — there is nothing separate for you to book.
-                    </p>
-                    {legHotels.hidden > 0 && (
-                      <p className="dfr-hidden">
-                        {legHotels.hidden} propert{legHotels.hidden === 1 ? 'y is' : 'ies are'}{' '}
-                        hidden for a {search.nationality} passport because {legRule.channelLabel} does
-                        not contract {legHotels.hidden === 1 ? 'it' : 'them'}. Change the passport
-                        on the visa step and the full list returns.
-                      </p>
-                    )}
-                  </div>
-                )}
+                {/* No banner. The hotel list is already filtered to what this
+                    traveller can actually be sold, and a customer does not need
+                    to be told which supplier contracts what, or why a property
+                    they never saw is missing. The visa consequence — the one
+                    thing that affects them — is stated on the visa step. */}
 
                 <div role="radiogroup" aria-label="Hotel">
                   {legHotels.hotels.map((item, i) => (
@@ -1284,15 +1267,12 @@ export default function PackageBuilder() {
                             <h3>
                               🛂 {addon.title}
                               {isMultiDestination ? ` · ${leg.toCity}` : ''}
-                              <span className="dfr-tag">
-                                {rule.visaRoute === 'managed' ? 'Official channel' : 'Authorised agent'}
-                              </span>
                             </h3>
                             <div className="visabanner">
                               <b>
                                 Required for {search.nationality} passports entering {leg.country}.
                               </b>{' '}
-                              {rule.summary} {rule.partnerNote}. {APPLICATION_LANGUAGE}
+                              {rule.customerSummary} {APPLICATION_LANGUAGE}
                             </div>
 
                             <div className="visarow">
@@ -1326,9 +1306,8 @@ export default function PackageBuilder() {
                                 </span>
                               </div>
                               <p className="docs-why">
-                                Uploaded now, before you pay. A complete file is submitted the
-                                moment payment clears, rather than an email chain starting after
-                                it.
+                                Uploaded before you pay, so your application can go in as soon
+                                as your payment clears.
                               </p>
 
                               {/* One picker for the lot. The rows below stay —
@@ -1359,9 +1338,7 @@ export default function PackageBuilder() {
                                       {outstandingDocuments(rule, uploadedFor(leg.id))
                                         .map((doc) => doc.label.toLowerCase())
                                         .join(', ')}
-                                      . Your passport and photograph carry across every
-                                      destination on this trip, so they are only ever uploaded
-                                      once.
+.
                                     </span>
                                   </span>
                                 </label>
@@ -1434,7 +1411,7 @@ export default function PackageBuilder() {
                                     <span className="rb-w">
                                       {row.condition}
                                       {row.id === 'tours' && rule.toursRefundableException
-                                        ? ` ${rule.toursRefundableException}`
+                                        ? `, ${rule.toursRefundableException}`
                                         : ''}
                                     </span>
                                   </li>
@@ -1490,8 +1467,8 @@ export default function PackageBuilder() {
                     </b>
                     <p>
                       {docsOutstanding.length === 1
-                        ? `${docsOutstanding[0].leg.toCity} files through ${docsOutstanding[0].rule.channelLabel}, and the application goes in as soon as your payment clears. Uploading them now is the fastest route — paying without them only means we come back to you for them.`
-                        : 'Each of these files through a partner, and the applications go in as soon as your payment clears. Uploading them now is the fastest route.'}
+                        ? 'Upload them now and your application goes in as soon as your payment clears.'
+                        : 'Upload them now and your applications go in as soon as your payment clears.'}
                     </p>
                     {/* The way past this box without the documents. It exists
                         because the alternative is a traveller who cannot
