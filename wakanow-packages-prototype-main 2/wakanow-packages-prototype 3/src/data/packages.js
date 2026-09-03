@@ -478,7 +478,7 @@ const DOHA = {
   ],
   transfer: { name: 'Private airport transfers', desc: 'Both ways · meet and greet at Hamad International', price: 44000, separate: 52000, channel: 'Discover Qatar' },
   addons: [
-    { id: 'visa', title: 'Qatar tourist visa', meta: 'Applied for through Discover Qatar with your booking · 4–6 working days', price: 58000, separate: 70000 },
+    { id: 'visa', title: 'Qatar tourist visa', meta: 'Applied for with your booking · 4–6 working days', price: 58000, separate: 70000 },
     { id: 'dunes', title: 'Khor Al Adaid desert safari', meta: 'Dune drive to the inland sea · lunch at the camp · half day', price: 52000, separate: 63000 },
     { id: 'mia', title: 'Museum of Islamic Art and the Corniche', meta: 'Guided morning, then the dhow harbour and Souq Waqif', price: 30000, separate: 37000 },
   ],

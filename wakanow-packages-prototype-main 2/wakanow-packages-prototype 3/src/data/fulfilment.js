@@ -47,8 +47,16 @@ export const FULFILMENT_RULES = [
     country: 'Qatar',
     /** Passports the rule bites on. Every other passport books normally. */
     nationalities: ['Nigeria', 'Ghana'],
+    /* Internal. Operations, finance and the trade agreement need the supplier
+       by name; the customer journey does not, so nothing rendered to a customer
+       reads this field — it reads `channelLabel` below. */
     partner: 'Discover Qatar',
-    partnerNote: 'Wakanow is a registered Discover Qatar trade partner',
+    /* Customer-facing. Names the requirement, not the supplier: the constraint
+       genuinely belongs to Qatar, and attributing it there is both true and the
+       part a traveller needs. "Third party" would read as a middleman taking a
+       cut, and "regulatory" would imply a legal duty on the traveller. */
+    channelLabel: 'Qatar’s official tourism channel',
+    partnerNote: 'Wakanow is an approved booking partner for this channel',
     /** Land services must come from the partner's inventory. */
     landChannel: true,
     landComponents: ['hotel', 'transfer', 'tours'],
@@ -56,7 +64,7 @@ export const FULFILMENT_RULES = [
     visaRoute: 'managed',
     leadTime: '4–6 working days',
     summary:
-      'Qatar requires visitors on a Nigeria passport to book hotels, transfers and tours through Discover Qatar, the state tourism partner. The visa application is filed through that same booking.',
+      'Qatar requires visitors on a Nigeria passport to book hotels, transfers and tours through the country’s official tourism channel. The visa application is filed through that same booking.',
     documents: [
       { id: 'passport', label: 'Passport bio page', note: 'Valid for at least 6 months beyond travel' },
       { id: 'photo', label: 'Passport photograph', note: 'White background, taken within the last 6 months' },
@@ -68,13 +76,14 @@ export const FULFILMENT_RULES = [
        rather than in the shared table, because it is a property of this
        partner and not of managed fulfilment in general. */
     toursRefundableException:
-      'Where the Discover Qatar tour is itself refundable, it is refunded.',
+      'Where the tour operator’s own terms allow a refund, it is refunded.',
   },
   {
     id: 'singapore-authorised-agent',
     country: 'Singapore',
     nationalities: ['Nigeria'],
     partner: 'an authorised visa agent',
+    channelLabel: 'an authorised visa agent',
     partnerNote: 'Wakanow files through its authorised agent in Singapore',
     /** Hotels are unconstrained — this is the whole point of the second rule. */
     landChannel: false,
