@@ -17,7 +17,7 @@
 import { findPackage } from '../data/packages.js';
 import { buildFares } from '../data/variants.js';
 import { addDays, nightsBetween } from './dates.js';
-import { pricePackage } from './pricing.js';
+import { PER_TRAVELLER, UNIT_PARTY, pricePackage } from './pricing.js';
 
 const tidy = (value) => Math.round(value / 100) * 100;
 
@@ -104,17 +104,25 @@ export function flightsForLeg(entry) {
 }
 
 /** The flight home from the final destination. Only exists on a multi-city trip. */
-export function homewardFlight(itinerary, { fromCity, fromCode }) {
+export function homewardFlight(itinerary, { fromCity, fromCode }, party = UNIT_PARTY) {
   if (itinerary.length < 2) return null;
   const last = itinerary[itinerary.length - 1];
   const base = last.pkg.flights[0];
+  // A seat home is bought per traveller, like every other seat on the trip.
+  const seats = Math.max(1, party.travellers ?? 1);
+  const unitBundled = tidy(base.price * ONE_WAY);
+  const unitSeparate = tidy(base.separate * ONE_WAY);
   return {
     key: 'home',
     label: `Return to ${fromCity}`,
     route: `${last.toCity} (${last.toCode}) → ${fromCity} (${fromCode})`,
     airline: base.name.split(' · ')[0],
-    bundled: tidy(base.price * ONE_WAY),
-    separate: tidy(base.separate * ONE_WAY),
+    basis: PER_TRAVELLER,
+    qty: seats,
+    unitBundled,
+    unitSeparate,
+    bundled: unitBundled * seats,
+    separate: unitSeparate * seats,
   };
 }
 
@@ -124,7 +132,7 @@ export function homewardFlight(itinerary, { fromCity, fromCode }) {
  * `selections` is keyed by leg id, each holding that leg's flight/fare/hotel/room
  * ids, which optional components are on, and its enabled add-ons.
  */
-export function priceItinerary(itinerary, selections = {}, origin) {
+export function priceItinerary(itinerary, selections = {}, origin, party = UNIT_PARTY) {
   const legPrices = itinerary.map((entry) => {
     const chosen = selections[entry.id] ?? {};
     const options = flightsForLeg(entry);
@@ -142,12 +150,13 @@ export function priceItinerary(itinerary, selections = {}, origin) {
       includeTransfer: chosen.includeTransfer ?? true,
       includeTours: chosen.includeTours ?? true,
       addons: chosen.addons ?? [],
+      party,
     });
 
     return { entry, priced, flightOptions: options };
   });
 
-  const home = homewardFlight(itinerary, origin);
+  const home = homewardFlight(itinerary, origin, party);
 
   const bundled = legPrices.reduce((sum, l) => sum + l.priced.bundled, 0) + (home?.bundled ?? 0);
   const separate = legPrices.reduce((sum, l) => sum + l.priced.separate, 0) + (home?.separate ?? 0);
@@ -156,10 +165,14 @@ export function priceItinerary(itinerary, selections = {}, origin) {
   return {
     legPrices,
     home,
+    party,
     bundled,
     separate,
     eligible,
+    /* One saving, derived here, reused everywhere. Screens must not compute
+       their own — that is how the builder and checkout came to disagree. */
     save: eligible ? separate - bundled : 0,
+    perPerson: Math.round(bundled / Math.max(1, party.travellers ?? 1)),
     totalNights: itinerary.reduce((sum, e) => sum + e.nights, 0),
     startDate: itinerary[0]?.startDate,
     endDate: itinerary[itinerary.length - 1]?.endDate,

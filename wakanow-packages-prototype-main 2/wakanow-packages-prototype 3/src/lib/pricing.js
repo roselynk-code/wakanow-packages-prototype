@@ -35,6 +35,31 @@ export function findRoom(hotel, id) {
 }
 
 /**
+ * How a component's price scales.
+ *
+ * The old model had no answer to this, so a party of four cost exactly what a
+ * party of two cost right up until checkout multiplied the whole package by
+ * head count — which is wrong in the other direction, because a room and a
+ * shared airport transfer do not double when two more people join.
+ *
+ *   traveller  a seat, a tour place, a visa application — one per person
+ *   room       the hotel bill — one per room, however many sleep in it
+ *   booking    a shared vehicle — one per trip, whoever is in it
+ */
+export const PER_TRAVELLER = 'traveller';
+export const PER_ROOM = 'room';
+export const PER_BOOKING = 'booking';
+
+/** The party a price is quoted for. One traveller in one room is the unit. */
+export const UNIT_PARTY = { travellers: 1, rooms: 1 };
+
+function quantityFor(basis, party) {
+  if (basis === PER_TRAVELLER) return Math.max(1, party.travellers ?? 1);
+  if (basis === PER_ROOM) return Math.max(1, party.rooms ?? 1);
+  return 1;
+}
+
+/**
  * @param pkg      a record from src/data/packages.js
  * @param options  nights, the chosen flight/fare and hotel/room, which optional
  *                 parts are on, and the set of enabled add-on ids
@@ -49,6 +74,7 @@ export function pricePackage(pkg, options = {}) {
     includeTransfer = true,
     includeTours = true,
     addons = [],
+    party = UNIT_PARTY,
   } = options;
 
   const flight = findFlight(pkg, flightId);
@@ -63,48 +89,76 @@ export function pricePackage(pkg, options = {}) {
   const nightly = room?.nightly ?? hotel.nightly;
   const nightlySeparate = room?.nightlySeparate ?? hotel.nightlySeparate;
 
+  /* Authored figures are UNIT prices — one seat, one room-night, one vehicle.
+     `scale` turns each into what this party actually owes, and keeps the unit
+     price on the line so a screen can show "₦x per person" without guessing. */
+  const scale = (line) => {
+    const qty = quantityFor(line.basis, party);
+    return {
+      ...line,
+      qty,
+      unitBundled: line.bundled,
+      unitSeparate: line.separate,
+      bundled: line.bundled * qty,
+      separate: line.separate * qty,
+    };
+  };
+
   const lines = [
     {
       key: 'flight',
       label: fare ? `Flights · ${fare.label}` : 'Flights',
+      basis: PER_TRAVELLER,
       bundled: flightPrice,
       separate: flightSeparate,
     },
     {
       key: 'hotel',
       label: `Hotel · ${nights} night${nights === 1 ? '' : 's'}`,
+      basis: PER_ROOM,
       bundled: nightly * nights,
       separate: nightlySeparate * nights,
     },
-  ];
+  ].map(scale);
 
   if (pkg.transfer && includeTransfer) {
-    lines.push({
-      key: 'transfer',
-      label: 'Airport transfers',
-      bundled: pkg.transfer.price,
-      separate: pkg.transfer.separate,
-    });
+    lines.push(
+      scale({
+        key: 'transfer',
+        label: 'Airport transfers',
+        // A shared vehicle carries the party; it does not multiply with it.
+        basis: PER_BOOKING,
+        bundled: pkg.transfer.price,
+        separate: pkg.transfer.separate,
+      }),
+    );
   }
 
   if (pkg.tours && includeTours) {
-    lines.push({
-      key: 'tours',
-      label: pkg.tours.label,
-      bundled: pkg.tours.price,
-      separate: pkg.tours.separate,
-    });
+    lines.push(
+      scale({
+        key: 'tours',
+        label: pkg.tours.label,
+        basis: PER_TRAVELLER,
+        bundled: pkg.tours.price,
+        separate: pkg.tours.separate,
+      }),
+    );
   }
 
   for (const id of addons) {
     const addon = pkg.addons?.find((a) => a.id === id);
     if (addon) {
-      lines.push({
-        key: `addon:${addon.id}`,
-        label: addon.title,
-        bundled: addon.price,
-        separate: addon.separate,
-      });
+      lines.push(
+        scale({
+          key: `addon:${addon.id}`,
+          label: addon.title,
+          // A visa is filed per passport; an extra bag is bought per traveller.
+          basis: addon.basis ?? PER_TRAVELLER,
+          bundled: addon.price,
+          separate: addon.separate,
+        }),
+      );
     }
   }
 
@@ -115,6 +169,8 @@ export function pricePackage(pkg, options = {}) {
   const bundled = lines.reduce((sum, l) => sum + l.bundled, 0);
   const separate = lines.reduce((sum, l) => sum + l.separate, 0);
 
+  const travellers = Math.max(1, party.travellers ?? 1);
+
   return {
     flight,
     hotel,
@@ -123,15 +179,18 @@ export function pricePackage(pkg, options = {}) {
     nights,
     lines,
     eligible,
+    party,
     bundled,
     separate,
     save: eligible ? separate - bundled : 0,
-    perParty: (travellers) => bundled * travellers,
+    /* Per person is the total divided by heads — the travel convention — and
+       never a component price pretending to be one. */
+    perPerson: Math.round(bundled / travellers),
   };
 }
 
 /** The headline figures a package card shows, at its own natural duration. */
-export function cardPrice(pkg, nights = pkg.nights) {
-  const { bundled, separate, save } = pricePackage(pkg, { nights });
-  return { now: bundled, was: separate, save };
+export function cardPrice(pkg, nights = pkg.nights, party = UNIT_PARTY) {
+  const { bundled, separate, save, perPerson } = pricePackage(pkg, { nights, party });
+  return { now: bundled, was: separate, save, perPerson };
 }

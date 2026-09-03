@@ -28,7 +28,7 @@
 import { findPackage } from '../data/packages.js';
 import { fulfilmentRule, hotelsForLeg } from '../data/fulfilment.js';
 import { nairaShort } from './format.js';
-import { findFare, findRoom, pricePackage } from './pricing.js';
+import { UNIT_PARTY, findFare, findRoom, pricePackage } from './pricing.js';
 
 const AUTHORED = [
   { name: 'Essential', mod: 'ess', slug: 'tier-essential', price: 1486000, save: 85000, separate: 1571000 },
@@ -95,7 +95,7 @@ function visaLine(pkg, nationality) {
 }
 
 /** One composed tier: its selection, its price and the lines the rail shows. */
-function composeTier(pkg, rule, { nights, nationality }) {
+function composeTier(pkg, rule, { nights, nationality, party = UNIT_PARTY }) {
   const flight = pick(byPrice(pkg.flights), rule.flight);
   /* Composition sells from the same shelf the builder does: where a fulfilment
      rule restricts the channel, a tier cannot offer a hotel the traveller is
@@ -107,14 +107,19 @@ function composeTier(pkg, rule, { nights, nationality }) {
     rule.tours === 'all' ? tours : rule.tours === 0 ? [] : tours.slice(0, rule.tours);
   const includeTransfer = Boolean(rule.transfer && pkg.transfer);
 
-  const priced = pricePackage(pkg, {
+  const pricingOptions = {
     nights,
     flightId: flight?.id,
     hotelId: hotel?.id,
     includeTransfer,
     includeTours: chosenTours.length > 0,
     addons: chosenTours.map((tour) => tour.id),
-  });
+  };
+  // Two figures, both real: the headline the card advertises (per person) and
+  // what this particular party would actually owe. A card that quotes only the
+  // first leaves the customer to guess how it scales.
+  const priced = pricePackage(pkg, pricingOptions);
+  const forParty = pricePackage(pkg, { ...pricingOptions, party });
 
   const inclusions = [
     { icon: '✈', title: flight?.name ?? 'Flight', sub: flight?.desc ?? '' },
@@ -140,6 +145,9 @@ function composeTier(pkg, rule, { nights, nationality }) {
     price: priced.bundled,
     separate: priced.separate,
     save: priced.eligible ? priced.separate - priced.bundled : 0,
+    partyTotal: forParty.bundled,
+    partySave: forParty.eligible ? forParty.separate - forParty.bundled : 0,
+    perPerson: forParty.perPerson,
     inclusions,
     composed: true,
     /** What the builder applies when this tier is chosen. */
@@ -159,17 +167,29 @@ function composeTier(pkg, rule, { nights, nationality }) {
  * The three tiers for one destination at the trip's own length.
  * Dubai returns the authored records; everywhere else is composed.
  */
-export function tiersFor(pkg, { nights, nationality }) {
+export function tiersFor(pkg, { nights, nationality, party = UNIT_PARTY }) {
   if (pkg.city === AUTHORED_CITY) {
     return AUTHORED.map((tier) => {
       const record = findPackage(tier.slug);
+      // The authored headline figures are per person; the party total is priced
+      // from the same record so a room does not double when two more people join.
+      const forParty = pricePackage(record, { nights, party });
       return {
         ...tier,
         tagline: record.tagline,
         inclusions: record.inclusions ?? [],
         composed: false,
+        selection: { hotelId: findHotelFor(record)?.id },
+        partyTotal: forParty.bundled,
+        partySave: forParty.eligible ? forParty.separate - forParty.bundled : 0,
+        perPerson: forParty.perPerson,
       };
     });
   }
-  return RULES.map((rule) => composeTier(pkg, rule, { nights, nationality }));
+  return RULES.map((rule) => composeTier(pkg, rule, { nights, nationality, party }));
+}
+
+/** The hotel an authored tier is built around, so selecting it fills the build. */
+function findHotelFor(record) {
+  return record.hotels?.[0];
 }
