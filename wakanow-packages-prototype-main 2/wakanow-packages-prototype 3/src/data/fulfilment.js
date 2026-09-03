@@ -57,6 +57,12 @@ export const FULFILMENT_RULES = [
        cut, and "regulatory" would imply a legal duty on the traveller. */
     channelLabel: 'Qatar’s official tourism channel',
     partnerNote: 'Wakanow is an approved booking partner for this channel',
+    /* What a customer is told. It covers only what affects them — that the visa
+       is arranged with the booking and what that means for their documents.
+       How the inventory is contracted, and who contracts it, is ours to handle
+       and theirs to never think about. */
+    customerSummary:
+      'Your Qatar visa is arranged as part of this booking, so there is nothing separate for you to apply for.',
     /** Land services must come from the partner's inventory. */
     landChannel: true,
     landComponents: ['hotel', 'transfer', 'tours'],
@@ -76,7 +82,7 @@ export const FULFILMENT_RULES = [
        rather than in the shared table, because it is a property of this
        partner and not of managed fulfilment in general. */
     toursRefundableException:
-      'Where the tour operator’s own terms allow a refund, it is refunded.',
+      'unless the tour’s own terms allow a refund',
   },
   {
     id: 'singapore-authorised-agent',
@@ -85,6 +91,8 @@ export const FULFILMENT_RULES = [
     partner: 'an authorised visa agent',
     channelLabel: 'an authorised visa agent',
     partnerNote: 'Wakanow files through its authorised agent in Singapore',
+    customerSummary:
+      'Your Singapore visa is applied for on your behalf as part of this booking.',
     /** Hotels are unconstrained — this is the whole point of the second rule. */
     landChannel: false,
     landComponents: [],
@@ -246,13 +254,13 @@ export const REFUSAL_REFUND = [
     id: 'tours',
     component: 'Tours',
     rule: 'Non-refundable',
-    condition: 'regardless of the visa outcome — the operator confirms them after payment',
+    condition: 'regardless of the visa outcome',
   },
   {
     id: 'visa',
     component: 'Visa application fee',
     rule: 'Non-refundable',
-    condition: 'always — the processing cost is spent whether the answer is yes or no',
+    condition: 'always',
   },
   {
     id: 'flights',
