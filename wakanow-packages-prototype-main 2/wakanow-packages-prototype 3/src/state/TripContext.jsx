@@ -87,6 +87,18 @@ export function TripProvider({ children }) {
     setDeferred((prev) => ({ ...prev, [legId]: on }));
   }, []);
 
+  /* ── The booking handed from the builder to checkout ──────────────────────
+     The itinerary the customer actually built, priced once, stored whole.
+
+     Checkout used to re-derive a price of its own by snapping the build to the
+     nearest authored tier and multiplying by head count, which is why the two
+     screens quoted different numbers for the same trip. It now reads this and
+     only this. If it is null, nobody has been through the builder and checkout
+     says so rather than inventing a trip. */
+  const [booking, setBookingState] = useState(null);
+  const confirmBooking = useCallback((snapshot) => setBookingState(snapshot), []);
+  const clearBooking = useCallback(() => setBookingState(null), []);
+
   const setSearch = useCallback((patch) => {
     setSearchState((prev) => {
       const next = {
@@ -209,11 +221,25 @@ export function TripProvider({ children }) {
       toggleDocument,
       deferredDocuments: deferred,
       deferDocuments,
+
+      /* The party every price is quoted for. One object, so no screen has to
+         decide for itself whether a number is per person or for everyone. */
+      party: {
+        travellers: search.adults + search.children,
+        rooms: search.rooms,
+        adults: search.adults,
+        children: search.children,
+        infants: search.infants,
+      },
+
+      booking,
+      confirmBooking,
+      clearBooking,
     };
   }, [
-    search, legs, tier, bookingSlug, documents, deferred,
+    search, legs, tier, bookingSlug, documents, deferred, booking,
     setSearch, setDates, setTripLength, addLeg, removeLeg, setLegSlug, setLegNights,
-    documentsFor, markDocuments, toggleDocument, deferDocuments,
+    documentsFor, markDocuments, toggleDocument, deferDocuments, confirmBooking, clearBooking,
   ]);
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
