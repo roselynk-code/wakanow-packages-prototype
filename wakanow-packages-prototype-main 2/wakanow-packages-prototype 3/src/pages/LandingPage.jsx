@@ -254,7 +254,7 @@ export default function LandingPage() {
               <div className="field fieldfix" aria-disabled="true">
                 <span className="lab">From</span>
                 <span className="val">{`${search.fromCity} (${search.fromCode})`}</span>
-                <span className="hint">{search.fromName} · fixed in Phase 1</span>
+                <span className="hint">Departing from {search.fromCity}</span>
               </div>
 
               {/* Going to is the whole search. It was markup — a button with no
@@ -501,7 +501,7 @@ export default function LandingPage() {
 
       <footer>
         <div className="wrap">
-          Wakanow Packages · Phase 1 wireframe · Prices are illustrative
+          Wakanow Packages · Preview · Prices are illustrative
         </div>
       </footer>
     </div>

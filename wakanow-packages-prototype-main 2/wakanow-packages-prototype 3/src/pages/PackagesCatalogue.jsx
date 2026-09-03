@@ -175,7 +175,7 @@ export default function PackagesCatalogue() {
       </div>
 
       <footer>
-        <div className="wrap">Wakanow Packages · Phase 1 prototype · Prices are illustrative</div>
+        <div className="wrap">Wakanow Packages · Preview · Prices are illustrative</div>
       </footer>
     </div>
   );

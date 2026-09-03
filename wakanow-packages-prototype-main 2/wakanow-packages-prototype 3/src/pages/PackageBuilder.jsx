@@ -20,7 +20,6 @@ import {
   hotelsForLeg,
   outstandingDocuments,
 } from '../data/fulfilment.js';
-import { findPackage } from '../data/packages.js';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { flightCard, sortFlights, sortSummary } from '../lib/flights.js';
 import { delta, naira, nairaShort } from '../lib/format.js';
@@ -39,12 +38,12 @@ const LEG_STEPS = [
   { kind: 'tours', label: 'Tours' },
 ];
 
+/** Steps a traveller can leave entirely alone and still have a valid trip. */
+const OPTIONAL_STEPS = ['transfer', 'tours'];
+
 /** The passport countries the search offers, mirrored on the visa step's
  *  Check Requirements panel — nationality is what the visa rule turns on. */
 const NATIONALITIES = ['Nigeria', 'Ghana', 'United Kingdom', 'United States', 'South Africa'];
-
-/** Only the closest-tier approximation at checkout needs the authored slugs. */
-const TIER_SLUGS = { Essential: 'tier-essential', Premium: 'tier-premium', Luxury: 'tier-luxury' };
 
 const WHATSAPP_PATH =
   'M12 2a10 10 0 00-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2zm5.8 14.2c-.2.7-1.4 1.3-2 1.4-.5.1-1.1.1-1.8-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2 0 .4-.1.6l-.4.5c-.1.2-.3.3-.1.6.1.3.6 1.1 1.4 1.8 1 .9 1.8 1.1 2 1.3.3.1.4.1.6-.1l.8-.9c.2-.2.4-.2.6-.1l2 1c.2.1.4.2.4.3.1.2.1.7-.1 1.3z';
@@ -56,18 +55,6 @@ const shortName = (name) => name.split(' · ')[0];
 const tourAddons = (pkg) => (pkg.addons ?? []).filter((addon) => addon.id !== 'visa');
 
 const visaAddon = (pkg) => (pkg.addons ?? []).find((addon) => addon.id === 'visa');
-
-/**
- * The hotel a custom build ends on is the strongest signal of which tier it
- * resembles — the tiers differ most on where you stay. Ranked within the
- * package's own list rather than by hotel id, so it works for any destination.
- */
-function closestTier(hotel, hotels) {
-  const ranked = [...hotels].sort((a, b) => a.nightly - b.nightly);
-  if (hotel.id === ranked[0]?.id) return { name: 'Essential', slug: TIER_SLUGS.Essential };
-  if (hotel.id === ranked[ranked.length - 1]?.id) return { name: 'Luxury', slug: TIER_SLUGS.Luxury };
-  return { name: 'Premium', slug: TIER_SLUGS.Premium };
-}
 
 /** Everything the traveller can change on one leg of the trip. */
 function defaultSelection(entry) {
@@ -139,9 +126,9 @@ export default function PackageBuilder() {
     routeLabel,
     payingTravellers,
     search,
+    setTier,
     setSearch,
     setDates,
-    setTier,
     setBookingSlug,
     totalNights,
     dateLabel,
@@ -151,6 +138,8 @@ export default function PackageBuilder() {
     toggleDocument,
     deferredDocuments,
     deferDocuments,
+    party,
+    confirmBooking,
   } = useTrip();
 
   const [stepKey, setStepKey] = useState(`${itinerary[0].id}-hotel`);
@@ -202,11 +191,21 @@ export default function PackageBuilder() {
   const previous = steps[stepIndex - 1];
   const following = steps[stepIndex + 1];
 
-  const priced = priceItinerary(itinerary, selections, search);
+  const priced = priceItinerary(itinerary, selections, search, party);
 
   const entry = current.entry;
   const sel = entry ? selFor(entry) : null;
   const legPriced = entry ? priced.legPrices[entry.index] : null;
+
+  /* What removing every tour on this leg actually saves, priced for the real
+     party — so the remove button can name the consequence instead of leaving
+     the customer to discover it in the total. */
+  const tourTotal = entry
+    ? (legPriced?.priced.lines ?? [])
+        .filter((line) => line.key === 'tours' || line.key.startsWith('addon:'))
+        .filter((line) => !line.key.endsWith(':visa'))
+        .reduce((sum, line) => sum + line.bundled, 0)
+    : 0;
   const hotel = legPriced?.priced.hotel;
   const room = legPriced?.priced.room;
   const flight = legPriced?.priced.flight;
@@ -252,6 +251,14 @@ export default function PackageBuilder() {
   );
 
   const total = priced.bundled;
+  const perPerson = priced.perPerson;
+
+  /* Occupancy: a room sleeps what the hotel says it sleeps. Checked here, where
+     the party is set, rather than surfacing as a failed booking after payment. */
+  const maxPerRoom = 2;
+  const roomCapacity = party.rooms * maxPerRoom;
+  const overOccupied = party.travellers > roomCapacity;
+  const roomsNeeded = Math.ceil(party.travellers / maxPerRoom);
 
   /* The three auto-generated packages for this search. Dubai returns the
      authored records; every other destination is composed from its own
@@ -261,6 +268,7 @@ export default function PackageBuilder() {
     : tiersFor(itinerary[0].pkg, {
         nights: itinerary[0].nights,
         nationality: search.nationality,
+        party,
       });
 
   useEffect(() => {
@@ -381,53 +389,104 @@ export default function PackageBuilder() {
   };
 
   /**
-   * An authored tier is a package in its own right and still goes straight to
-   * checkout. A composed tier has no catalogue record — it is this
-   * destination's inventory arranged three ways — so choosing one fills the
-   * build with its choices and leaves the traveller here, which is what a
-   * starting point means.
+   * A tier is a starting point, never a replacement for the build.
+   *
+   * Selecting one used to send an authored tier straight to checkout, so the
+   * customer's own choices were silently discarded and the price came from a
+   * package they had not built. Every tier now fills the builder with its
+   * choices and leaves the traveller here, where they can see what changed and
+   * keep editing. Nothing reaches checkout except the trip on screen.
    */
   const selectTier = (tier) => {
     setTier(tier.name);
-    if (tier.composed) {
-      setAppliedTier(tier.name);
-      patchSel(itinerary[0].id, tier.selection);
-      setStepKey(`${itinerary[0].id}-hotel`);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    setBookingSlug(tier.slug);
-    navigate('/checkout');
+    setAppliedTier(tier.name);
+    if (tier.selection) patchSel(itinerary[0].id, tier.selection);
+    setStepKey(`${itinerary[0].id}-hotel`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  /* The optional components of a single-destination trip, priced for the real
+     party. A multi-city trip keeps everything inside its legs, so the whole
+     total is core and checkout offers no separate toggles. */
+  const optionalPricing = (() => {
+    const first = itinerary[0];
+    const firstSel = selFor(first);
+    const firstPriced = priced.legPrices[0]?.priced;
+    const lineAmount = (predicate) =>
+      (firstPriced?.lines ?? []).filter(predicate).reduce((sum, l) => sum + l.bundled, 0);
+    const visaLine = lineAmount((l) => l.key === 'addon:visa');
+    const tourLines = lineAmount(
+      (l) => l.key === 'tours' || (l.key.startsWith('addon:') && l.key !== 'addon:visa'),
+    );
+    const transferLine = lineAmount((l) => l.key === 'transfer');
+    const visaUnit = visaAddon(first.pkg)?.price ?? 0;
+    return {
+      transfer: {
+        included: Boolean(firstSel.includeTransfer && first.pkg.transfer),
+        amount: transferLine || first.pkg.transfer?.price || 0,
+      },
+      tours: { included: Boolean(firstSel.includeTours), amount: tourLines || 0 },
+      visa: {
+        included: (firstSel.addons ?? []).includes('visa'),
+        amount: visaLine || visaUnit * party.travellers,
+      },
+    };
+  })();
+
+  /**
+   * Hand the built trip to checkout, priced.
+   *
+   * This used to snap the build to the nearest authored tier and let checkout
+   * multiply that by head count, so the price on the pay button had almost
+   * nothing to do with what the customer had assembled. The itinerary the
+   * customer actually built is now the only thing that crosses over, priced
+   * once, here, with its saving already resolved.
+   */
   const checkout = () => {
-    if (isMultiDestination) {
-      // No tier is a multi-city trip, so there is nothing to approximate here:
-      // checkout reads the itinerary itself from context and prices every leg.
-      setBookingSlug(itinerary[0].pkg.slug);
-      navigate('/checkout');
-      return;
-    }
-    // An approximation: the builder's exact custom combination has no catalogue
-    // record, so checkout shows the closest tier.
-    //
-    // The three authored tiers are Dubai packages, so the approximation is only
-    // valid when the trip IS the tier destination. It used to run for every
-    // single-destination build, which meant a Doha or Singapore trip arrived at
-    // checkout as Dubai: wrong city, wrong prices, and — because the fulfilment
-    // rule is keyed on destination — no partner routing and no refusal refund
-    // terms on the screen where the customer actually pays. Any other
-    // destination hands checkout its own package and leaves the tier alone.
-    const only = itinerary[0];
-    const tierCity = findPackage(TIER_SLUGS.Premium)?.city;
-    if (only.pkg.city !== tierCity) {
-      setBookingSlug(only.pkg.slug);
-      navigate('/checkout');
-      return;
-    }
-    const closest = closestTier(priced.legPrices[0].priced.hotel, only.pkg.hotels);
-    setTier(closest.name);
-    setBookingSlug(closest.slug);
+    confirmBooking({
+      pricedAt: Date.now(),
+      party,
+      selections,
+      legs: itinerary.map((entry) => {
+        const legPriced = priced.legPrices.find((l) => l.entry.id === entry.id)?.priced;
+        const sel = selFor(entry);
+        return {
+          id: entry.id,
+          city: entry.toCity,
+          country: entry.country,
+          slug: entry.pkg.slug,
+          nights: entry.nights,
+          startDate: entry.startDate,
+          endDate: entry.endDate,
+          hotel: legPriced?.hotel?.name,
+          room: legPriced?.room?.label,
+          flight: legPriced?.flight?.name,
+          fare: legPriced?.fare?.label,
+          includeTransfer: sel.includeTransfer,
+          tourIds: sel.includeTours ? sel.tourIds : [],
+          visa: (sel.addons ?? []).includes('visa'),
+          lines: legPriced?.lines ?? [],
+        };
+      }),
+      /* What each optional component costs for THIS party, and whether it is
+         currently in. Checkout re-offers them at exactly these prices, so a
+         toggle there moves the bill by the same amount it moved here — and the
+         core below excludes whatever is in, so nothing is counted twice. */
+      optional: optionalPricing,
+      core:
+        priced.bundled -
+        (optionalPricing.transfer.included ? optionalPricing.transfer.amount : 0) -
+        (optionalPricing.tours.included ? optionalPricing.tours.amount : 0) -
+        (optionalPricing.visa.included ? optionalPricing.visa.amount : 0),
+      home: priced.home,
+      eligible: priced.eligible,
+      bundled: priced.bundled,
+      separate: priced.separate,
+      save: priced.save,
+      perPerson: priced.perPerson,
+      startedFromTier: appliedTier,
+    });
+    setBookingSlug(itinerary[0].pkg.slug);
     navigate('/checkout');
   };
 
@@ -601,6 +660,18 @@ export default function PackageBuilder() {
 
       <div className="rail">
         <div className="wrap">
+          {/* Where you are, how much is left, and which of it you can ignore.
+              The rail used to number five steps without saying that three of
+              them are optional or that nothing is committed until payment. */}
+          <div className="railmeta">
+            <b>
+              Step {stepIndex + 1} of {steps.length}
+            </b>
+            <span>
+              {OPTIONAL_STEPS.includes(current.kind) ? 'Optional · ' : ''}
+              You can change any of this before you pay
+            </span>
+          </div>
           {railItems.map((item, i) => (
             <Fragment key={item.key}>
               {i > 0 && <span className="arr">→</span>}
@@ -618,6 +689,9 @@ export default function PackageBuilder() {
                   })}
                 >
                   <span className="n">{item.step.n}</span> {item.step.label}
+                  {OPTIONAL_STEPS.includes(item.step.kind) && (
+                    <em className="opt">optional</em>
+                  )}
                 </div>
               )}
             </Fragment>
@@ -649,9 +723,35 @@ export default function PackageBuilder() {
               ) : (
                 <>
                   <div className="tierbox-h">
-                    Built for your search
-                    <span>{search.toCity} · {totalNights} nights · {payingTravellers} travellers</span>
+                    Start from a ready-made tier
+                    <span>
+                      {search.toCity} · {totalNights} nights · {payingTravellers} travellers ·
+                      everything stays editable
+                    </span>
                   </div>
+                  {/* Occupancy is checked where the party is set, not at the
+                      hotel desk. The message names the fix rather than just
+                      refusing. */}
+                  {overOccupied && (
+                    <div className="occwarn">
+                      <b>
+                        {party.travellers} travellers in {party.rooms} room
+                        {party.rooms === 1 ? '' : 's'}
+                      </b>
+                      <p>
+                        These hotels sleep {maxPerRoom} per room, so you need {roomsNeeded} rooms.
+                        Prices below still show {party.rooms} room
+                        {party.rooms === 1 ? '' : 's'} until you add {roomsNeeded - party.rooms} more.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setSearch({ rooms: roomsNeeded })}
+                      >
+                        Add {roomsNeeded - party.rooms} room
+                        {roomsNeeded - party.rooms === 1 ? '' : 's'}
+                      </button>
+                    </div>
+                  )}
                   {tiers.map((tier) => {
                     const open = openTier === tier.name;
                     return (
@@ -663,9 +763,13 @@ export default function PackageBuilder() {
                           </div>
                           <div className="tm-tag">{tier.tagline}</div>
                         </div>
-                        <b>{naira(tier.price)}</b>
-                        <div className="tm-ref">{naira(tier.separate)} booked separately</div>
-                        <small>Save {nairaShort(tier.save)}</small>
+                        <b>{naira(tier.perPerson ?? tier.price)}</b>
+                        <div className="tm-ref">per person</div>
+                        <div className="tm-party">
+                          {naira(tier.partyTotal ?? tier.price)} total for {party.travellers}{' '}
+                          traveller{party.travellers === 1 ? '' : 's'}
+                        </div>
+                        <small>Save {nairaShort(tier.partySave ?? tier.save)}</small>
 
                         {open && (
                           <ul className="tm-inc">
@@ -985,12 +1089,23 @@ export default function PackageBuilder() {
                   <button className="backb" onClick={() => goStep(previous)}>
                     ← {backLabel}
                   </button>
+                  {/* A removal that costs nothing to understand: the button
+                      says what it saves, so the cheaper option is not hidden
+                      behind the word "skip". */}
                   {entry.pkg.transfer && sel.includeTransfer && (
                     <button
                       className="skipb"
                       onClick={() => patchSel(entry.id, { includeTransfer: false })}
                     >
-                      Skip transfer
+                      Remove transfer — save {naira(entry.pkg.transfer.price)}
+                    </button>
+                  )}
+                  {entry.pkg.transfer && !sel.includeTransfer && (
+                    <button
+                      className="skipb"
+                      onClick={() => patchSel(entry.id, { includeTransfer: true })}
+                    >
+                      Add transfer back — {naira(entry.pkg.transfer.price)}
                     </button>
                   )}
                   <button className="nextb" onClick={() => goStep(following)}>
@@ -1076,7 +1191,15 @@ export default function PackageBuilder() {
                       className="skipb"
                       onClick={() => patchSel(entry.id, { includeTours: false })}
                     >
-                      Skip all tours
+                      Remove all tours — save {naira(tourTotal)}
+                    </button>
+                  )}
+                  {!sel.includeTours && (
+                    <button
+                      className="skipb"
+                      onClick={() => patchSel(entry.id, { includeTours: true })}
+                    >
+                      Add tours back — {naira(tourTotal)}
                     </button>
                   )}
                   <button className="nextb" onClick={() => goStep(following)}>
@@ -1434,9 +1557,21 @@ export default function PackageBuilder() {
           <aside className="rside">
             <div className="totbox">
               <div className="totbox-h">
-                {isMultiDestination ? routeLabel : 'Your package'}{' '}
-                <small>{payingTravellers} travellers</small>
+                {isMultiDestination
+                  ? routeLabel
+                  : appliedTier
+                    ? 'Your customised trip'
+                    : 'Your trip'}{' '}
+                <small>
+                  {payingTravellers} traveller{payingTravellers === 1 ? '' : 's'} ·{' '}
+                  {party.rooms} room{party.rooms === 1 ? '' : 's'}
+                </small>
               </div>
+              {/* Names the tier the build started from, so choosing one never
+                  looks like it replaced the trip on screen. */}
+              {appliedTier && !isMultiDestination && (
+                <div className="totbox-from">Started from {appliedTier} · edited since</div>
+              )}
               <div className="totbox-b">
                 {priced.legPrices.map((leg) => (
                   <Fragment key={leg.entry.id}>
@@ -1464,12 +1599,18 @@ export default function PackageBuilder() {
                 <div className="tsv">
                   {priced.eligible
                     ? `You save ${naira(priced.save)} vs booking separately`
-                    : 'No bundle price on this combination'}
+                    : 'This combination does not qualify for a package discount'}
                 </div>
+                {/* The unit, stated. The headline used to say "Total /person"
+                    over a figure that was the whole package, next to tier cards
+                    quoted per person — two units, one panel, no way to tell. */}
                 <div className="tg">
-                  <span>Total /person</span>
+                  <span>
+                    Total for {party.travellers} traveller{party.travellers === 1 ? '' : 's'}
+                  </span>
                   <b>{naira(total)}</b>
                 </div>
+                <div className="tpp">{naira(perPerson)} per person</div>
                 <div className="pssl">
                   Or <b>{naira(Math.round(total / 6))}/month</b> × 6 with PSS
                 </div>
