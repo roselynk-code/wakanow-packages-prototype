@@ -12,12 +12,15 @@ import {
   APPLICATION_LANGUAGE,
   DEFERRED_LANGUAGE,
   DOCUMENT_DEADLINE,
+  REFUSAL_REFUND,
   SHARED_DOCUMENT_IDS,
+  TOURS_NONREFUNDABLE,
   documentStatus,
   fulfilmentRule,
   hotelsForLeg,
   outstandingDocuments,
 } from '../data/fulfilment.js';
+import { findPackage } from '../data/packages.js';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { flightCard, sortFlights, sortSummary } from '../lib/flights.js';
 import { delta, naira, nairaShort } from '../lib/format.js';
@@ -407,7 +410,21 @@ export default function PackageBuilder() {
     }
     // An approximation: the builder's exact custom combination has no catalogue
     // record, so checkout shows the closest tier.
+    //
+    // The three authored tiers are Dubai packages, so the approximation is only
+    // valid when the trip IS the tier destination. It used to run for every
+    // single-destination build, which meant a Doha or Singapore trip arrived at
+    // checkout as Dubai: wrong city, wrong prices, and — because the fulfilment
+    // rule is keyed on destination — no partner routing and no refusal refund
+    // terms on the screen where the customer actually pays. Any other
+    // destination hands checkout its own package and leaves the tier alone.
     const only = itinerary[0];
+    const tierCity = findPackage(TIER_SLUGS.Premium)?.city;
+    if (only.pkg.city !== tierCity) {
+      setBookingSlug(only.pkg.slug);
+      navigate('/checkout');
+      return;
+    }
     const closest = closestTier(priced.legPrices[0].priced.hotel, only.pkg.hotels);
     setTier(closest.name);
     setBookingSlug(closest.slug);
@@ -993,6 +1010,16 @@ export default function PackageBuilder() {
                   by default. Toggle any off.
                 </p>
 
+                {/* Said here, where the tour is chosen, and not only in the
+                    refund box four steps later. A customer who learns this at
+                    checkout learns it too late to have decided differently. */}
+                <p className="stwarn">
+                  ⚠ {TOURS_NONREFUNDABLE}{' '}
+                  {legRule
+                    ? 'That holds even if your visa is refused — the operator confirms tours after payment.'
+                    : ''}
+                </p>
+
                 {sel.includeTours ? (
                   <div>
                     {entry.pkg.tours && (
@@ -1271,8 +1298,25 @@ export default function PackageBuilder() {
                               )}
                             </div>
 
-                            <div className="visanote">
-                              ⚠ {rule.refund}
+                            {/* Component by component, because they do not
+                                behave alike and a single sentence would be
+                                false for three of the five. */}
+                            <div className="refundbox">
+                              <h4>⚠ If {leg.country} refuses your application</h4>
+                              <ul>
+                                {REFUSAL_REFUND.map((row) => (
+                                  <li key={row.id}>
+                                    <span className="rb-c">{row.component}</span>
+                                    <span className="rb-r">{row.rule}</span>
+                                    <span className="rb-w">
+                                      {row.condition}
+                                      {row.id === 'tours' && rule.toursRefundableException
+                                        ? ` ${rule.toursRefundableException}`
+                                        : ''}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
                           </div>
                         );

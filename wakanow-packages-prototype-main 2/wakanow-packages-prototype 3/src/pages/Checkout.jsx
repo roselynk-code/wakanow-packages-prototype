@@ -10,6 +10,9 @@ import {
   APPLICATION_LANGUAGE,
   DEFERRED_LANGUAGE,
   DOCUMENT_DEADLINE,
+  PAY_DISCLAIMER,
+  POST_PAYMENT_COMMITMENT,
+  REFUSAL_SUMMARY,
   documentStatus,
   fulfilmentRule,
 } from '../data/fulfilment.js';
@@ -508,7 +511,7 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
         }}
       >
         {rule ? (
-          <>⚠ {rule.refund}</>
+          <>⚠ {REFUSAL_SUMMARY}</>
         ) : (
           <>
             ⚠ Documents must be submitted within 5 working days of booking. If you do not submit
@@ -575,6 +578,14 @@ export default function Checkout() {
         .map((entry) => ({ entry, addon: entry.pkg.addons?.find((a) => a.id === 'visa') }))
         .filter((card) => card.addon)
     : [];
+  /* Whether any destination on this trip is fulfilled through a partner and so
+     carries the refusal refund terms. The disclaimers below are conditioned on
+     it: a Dubai-only booking has no visa application to be refused, and showing
+     refusal terms there would be noise the customer has to decode. */
+  const hasManagedVisa = isMultiDestination
+    ? visaCards.some(({ entry }) => fulfilmentRule(entry.pkg, search.nationality))
+    : Boolean(visaAddon && fulfilmentRule(selected, search.nationality));
+
   // The featured tour slot: the tiers keep the authored desert safari, a curated
   // destination offers its own headline excursion instead.
   const tourAddon = bookedTier
@@ -1875,6 +1886,25 @@ export default function Checkout() {
                   >
                     Phase 1 ends here — this is where Packages hands off to the existing Wakanow
                     payment flow.
+                    {/* Refund terms restated after payment, with the promise
+                        that makes a refusal a phone call rather than a wait.
+                        Repetition is the point: this is the copy a customer
+                        goes looking for when the news is bad. */}
+                    {hasManagedVisa && (
+                      <span
+                        style={{
+                          display: 'block',
+                          marginTop: '10px',
+                          paddingTop: '10px',
+                          borderTop: '1px solid #D1D1DB',
+                        }}
+                      >
+                        <b style={{ display: 'block', marginBottom: '4px', color: '#3D3D4E' }}>
+                          If your visa is refused
+                        </b>
+                        {REFUSAL_SUMMARY} {POST_PAYMENT_COMMITMENT}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => navigate('/')}
@@ -1893,15 +1923,31 @@ export default function Checkout() {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    className="paybtn"
-                    disabled={!acceptedTerms}
-                    title={acceptedTerms ? undefined : 'Accept the terms above to continue'}
-                    onClick={() => setHandedOff(true)}
-                  >
-                    Proceed to Pay {naira(dueTotal)}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="paybtn"
+                      disabled={!acceptedTerms}
+                      title={acceptedTerms ? undefined : 'Accept the terms above to continue'}
+                      onClick={() => setHandedOff(true)}
+                    >
+                      Proceed to Pay {naira(dueTotal)}
+                    </button>
+                    {/* The last thing said before the point of no return, and
+                        only where a visa is actually being applied for. */}
+                    {hasManagedVisa && (
+                      <p
+                        style={{
+                          marginTop: '8px',
+                          fontSize: '10.5px',
+                          color: 'var(--text-muted)',
+                          lineHeight: '15px',
+                        }}
+                      >
+                        {PAY_DISCLAIMER}
+                      </p>
+                    )}
+                  </>
                 )}
 
                 <div className="shareacts" style={{ flexDirection: 'column', gap: '8px' }}>
