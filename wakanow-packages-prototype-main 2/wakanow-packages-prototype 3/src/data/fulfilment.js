@@ -62,8 +62,13 @@ export const FULFILMENT_RULES = [
       { id: 'photo', label: 'Passport photograph', note: 'White background, taken within the last 6 months' },
       { id: 'funds', label: 'Bank statement', note: 'Last 3 months, stamped' },
     ],
-    refund:
-      'If the application is refused, the visa fee is refunded in full and the land arrangements are cancelled without penalty. Flights follow the airline’s own fare rules.',
+    /* Tours are non-refundable as a rule (see REFUSAL_REFUND), but Discover
+       Qatar is the partner AND the tour operator here, so where a DQ tour is
+       itself refundable it is refunded. The exception is stated per rule
+       rather than in the shared table, because it is a property of this
+       partner and not of managed fulfilment in general. */
+    toursRefundableException:
+      'Where the Discover Qatar tour is itself refundable, it is refunded.',
   },
   {
     id: 'singapore-authorised-agent',
@@ -84,8 +89,6 @@ export const FULFILMENT_RULES = [
       { id: 'form14a', label: 'Completed Form 14A', note: 'We pre-fill it from your booking — you sign it' },
       { id: 'funds', label: 'Bank statement', note: 'Last 3 months, stamped' },
     ],
-    refund:
-      'If the application is refused, the agent’s filing fee is not recoverable and is stated separately at checkout. The Singapore government fee is refunded. Hotels remain cancellable under their own free-cancellation window.',
   },
 ];
 
@@ -196,3 +199,88 @@ export const DEFERRED_LANGUAGE =
  */
 export const APPLICATION_LANGUAGE =
   'This is a visa application. Approval is decided by the destination’s immigration authority, not by Wakanow, and is never guaranteed.';
+
+/* ── Refunds on a refused application ───────────────────────────────────── */
+
+/**
+ * What happens to each component when the immigration authority refuses.
+ *
+ * One table, because five surfaces state these terms — the visa step, the
+ * checkout visa section, the pay disclaimer, the tour step and the
+ * post-payment confirmation — and refund terms that disagree between two
+ * screens are the ones a customer screenshots.
+ *
+ * The rule is per component, not per booking, because the components do not
+ * behave alike: two are refundable inside a cancellation window, one is
+ * consumed the moment it is filed, one belongs to a third party, and one
+ * belongs to the airline. Saying "you are refunded if refused" would be false
+ * for three of the five.
+ *
+ * NOTE: this replaces earlier copy that said the visa fee was refunded in full
+ * on refusal. That was wrong in the customer's favour, which is the expensive
+ * direction to be wrong in — the fee pays for an assessment that happened.
+ */
+export const REFUSAL_REFUND = [
+  {
+    id: 'hotel',
+    component: 'Hotel',
+    rule: 'Full refund',
+    condition: 'if cancelled 72+ hours before the booking date',
+  },
+  {
+    id: 'transfers',
+    component: 'Transfers',
+    rule: 'Full refund',
+    condition: 'if cancelled 72+ hours before the booking date',
+  },
+  {
+    id: 'tours',
+    component: 'Tours',
+    rule: 'Non-refundable',
+    condition: 'regardless of the visa outcome — the operator confirms them after payment',
+  },
+  {
+    id: 'visa',
+    component: 'Visa application fee',
+    rule: 'Non-refundable',
+    condition: 'always — the processing cost is spent whether the answer is yes or no',
+  },
+  {
+    id: 'flights',
+    component: 'Flights',
+    rule: 'Per airline fare rules',
+    condition: 'saver fares are typically non-refundable; flex fares may be refundable or creditable',
+  },
+];
+
+/** The one-line version, for surfaces with no room for the table. */
+export const REFUSAL_SUMMARY =
+  'If your visa is refused: hotel and transfers refunded in full when cancelled 72+ hours before the booking date. Tours and the visa application fee are non-refundable. Flights follow the airline’s fare rules.';
+
+/** Said once more at the point of no return. */
+export const PAY_DISCLAIMER =
+  'By paying, you confirm you understand this is a visa application, and that the refund terms above apply if it is refused.';
+
+/** The commitment that turns a refusal into a call rather than a wait. */
+export const POST_PAYMENT_COMMITMENT =
+  'If your application is refused we will contact you on WhatsApp within 24 hours to start your refund.';
+
+/** Stated at the moment a tour is added, not only in the refund box. */
+export const TOURS_NONREFUNDABLE = 'Tours are non-refundable once booked.';
+
+/*
+ * OPEN — refund policy is not finished, and these three gaps are known:
+ *
+ *   1. Voluntary cancellation. Nothing here covers a customer who simply
+ *      changes their mind; the Holidays team's existing rules are the starting
+ *      point and are due from the immersion week.
+ *   2. Refund timing. "Contact within 24 hours" is a promise to call, not to
+ *      pay. The actual processing time needs Finance.
+ *   3. Inside the 72-hour window. If the refusal lands less than 72 hours
+ *      before the hotel date, the hotel may be non-refundable too. The copy
+ *      states "72+ hours" and stops there. Someone has to decide whether the
+ *      customer carries that risk or Wakanow absorbs it as a cost of running a
+ *      managed model — the copy below cannot be finished until they do.
+ *
+ * All refund copy needs Legal sign-off before build (PRD open item #7).
+ */
