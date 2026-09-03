@@ -102,9 +102,9 @@ export default function VisaCheck({
         {verdict}
       </div>
       <p className="wk-vc-note">
-        Phase 1 holds the requirement per destination, written for a Nigeria
-        passport. Checking it against the passport above needs the visa matrix —
-        a Phase 2 integration.
+        We show the visa requirement for each destination as it applies to a
+        Nigeria passport. If you are travelling on a different passport, confirm
+        your own requirement with us before you book.
       </p>
     </div>
   );
