@@ -477,14 +477,14 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
             <>
               {rule.summary} Your documents are already with us — they were collected in the
               builder, before payment — so the application is filed through{' '}
-              {rule.partner} as soon as this payment clears, and takes {rule.leadTime} from
+              {rule.channelLabel} as soon as this payment clears, and takes {rule.leadTime} from
               there. {APPLICATION_LANGUAGE}
             </>
           ) : rule ? (
             <>
               {rule.summary} You chose to send your documents later, so {status.done} of{' '}
               {status.total} are with us. They are due {DOCUMENT_DEADLINE}, and you can pay
-              now. {DEFERRED_LANGUAGE} Filing through {rule.partner} takes {rule.leadTime}{' '}
+              now. {DEFERRED_LANGUAGE} Filing through {rule.channelLabel} takes {rule.leadTime}{' '}
               from a complete submission. {APPLICATION_LANGUAGE}
             </>
           ) : (
@@ -1402,11 +1402,11 @@ export default function Checkout() {
                     }}
                   >
                     <b style={{ color: '#8A5A00' }}>
-                      {row.city} hotel and transfers booked through {row.rule.partner}
+                      {row.city} hotel and transfers booked through {row.rule.channelLabel}
                     </b>
                     <div>
                       {row.rule.partnerNote}. Confirmation comes from Wakanow as usual — you have
-                      nothing to arrange with {row.rule.partner} yourself.
+                      nothing to arrange with them yourself.
                     </div>
                   </div>
                 ))}

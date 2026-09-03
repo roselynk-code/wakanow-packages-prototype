@@ -893,8 +893,8 @@ export default function PackageBuilder() {
                 {legRule?.landChannel && (
                   <div className="dfr">
                     <h4>
-                      <span className="dfr-tag">{legRule.partner}</span>
-                      {entry.toCity} hotels are booked through {legRule.partner}
+                      <span className="dfr-tag">Official channel</span>
+                      {entry.toCity} hotels are booked through {legRule.channelLabel}
                     </h4>
                     <p>
                       {legRule.summary} {legRule.partnerNote}, so this is arranged inside your
@@ -903,7 +903,7 @@ export default function PackageBuilder() {
                     {legHotels.hidden > 0 && (
                       <p className="dfr-hidden">
                         {legHotels.hidden} propert{legHotels.hidden === 1 ? 'y is' : 'ies are'}{' '}
-                        hidden for a {search.nationality} passport because {legRule.partner} does
+                        hidden for a {search.nationality} passport because {legRule.channelLabel} does
                         not contract {legHotels.hidden === 1 ? 'it' : 'them'}. Change the passport
                         on the visa step and the full list returns.
                       </p>
@@ -1285,7 +1285,7 @@ export default function PackageBuilder() {
                               🛂 {addon.title}
                               {isMultiDestination ? ` · ${leg.toCity}` : ''}
                               <span className="dfr-tag">
-                                {rule.visaRoute === 'managed' ? rule.partner : 'Authorised agent'}
+                                {rule.visaRoute === 'managed' ? 'Official channel' : 'Authorised agent'}
                               </span>
                             </h3>
                             <div className="visabanner">
@@ -1490,7 +1490,7 @@ export default function PackageBuilder() {
                     </b>
                     <p>
                       {docsOutstanding.length === 1
-                        ? `${docsOutstanding[0].leg.toCity} files through ${docsOutstanding[0].rule.partner}, and the application goes in as soon as your payment clears. Uploading them now is the fastest route — paying without them only means we come back to you for them.`
+                        ? `${docsOutstanding[0].leg.toCity} files through ${docsOutstanding[0].rule.channelLabel}, and the application goes in as soon as your payment clears. Uploading them now is the fastest route — paying without them only means we come back to you for them.`
                         : 'Each of these files through a partner, and the applications go in as soon as your payment clears. Uploading them now is the fastest route.'}
                     </p>
                     {/* The way past this box without the documents. It exists
