@@ -110,6 +110,18 @@
 .pg-landing .field .lab{font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:3px}
 .pg-landing .field .val{font-size:15px;font-weight:600;color:var(--text-primary);font-family:var(--font-heading);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pg-landing .field .hint{font-size:11px;color:var(--text-muted);display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Going to: the native select is laid transparently over the whole field, so
+   the field keeps its design and the picker opens from anywhere on it. */
+.pg-landing .fieldsel{position:relative;display:block;cursor:pointer}
+.pg-landing .fieldsel-in{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;-webkit-appearance:none;appearance:none}
+.pg-landing .fieldsel-cv{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-muted);pointer-events:none}
+.pg-landing .fieldsel .val{padding-right:16px}
+.pg-landing .fieldsel:hover{border-color:var(--border-medium)}
+.pg-landing .fieldsel:focus-within{border-color:var(--brand-500);box-shadow:0 0 0 3px rgba(0,75,190,.12)}
+/* From: stated, not offered. No hover or focus affordance, because there is
+   nothing behind it to open. */
+.pg-landing .fieldfix{cursor:default}
+.pg-landing .fieldfix:hover{border-color:var(--border-subtle)}
 
 /* THE SEARCH BUTTON — right end of the fields row.
    BLUE, not orange. On wakanow.com the primary search action is

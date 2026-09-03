@@ -6,7 +6,13 @@ import { TIERS, findPackage, isTier } from '../data/packages.js';
 import { formatRange, formatWeekday } from '../lib/dates.js';
 import { flightCard } from '../lib/flights.js';
 import { naira, nairaShort } from '../lib/format.js';
-import { APPLICATION_LANGUAGE, fulfilmentRule } from '../data/fulfilment.js';
+import {
+  APPLICATION_LANGUAGE,
+  DEFERRED_LANGUAGE,
+  DOCUMENT_DEADLINE,
+  documentStatus,
+  fulfilmentRule,
+} from '../data/fulfilment.js';
 import { priceItinerary, visaLegs } from '../lib/itinerary.js';
 import { cardPrice, findFare, findRoom, pricePackage } from '../lib/pricing.js';
 import { useTrip } from '../state/useTrip.js';
@@ -406,7 +412,11 @@ function AddonRow({ icon, title, isNew, desc, price, was, on, onToggle }) {
 /** The amber visa card. One destination shows one; a multi-city trip shows one
  *  per country that needs a visa, which is why it is a component and not inline
  *  markup — the copy and the price are the destination's own. */
-function VisaCard({ heading, city, country, nationality, addon, on, onToggle, rule }) {
+function VisaCard({ heading, city, country, nationality, addon, on, onToggle, rule, docs }) {
+  // What checkout may claim about documents is whatever the builder actually
+  // holds — see the note in TripContext. A card that says "already with us"
+  // over an empty file is the exact failure this whole flow exists to avoid.
+  const status = documentStatus(rule, docs ?? {});
   return (
     <div className="card" style={{ border: '2px solid #C77C00', background: '#FFFCF5' }}>
       <div className="cardhead">
@@ -438,12 +448,19 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
           You need a visa for {city} on a {nationality} passport
         </div>
         <div style={{ fontSize: '12px', color: '#7A5300', lineHeight: '18px' }}>
-          {rule ? (
+          {rule && status.complete ? (
             <>
               {rule.summary} Your documents are already with us — they were collected in the
               builder, before payment — so the application is filed through{' '}
               {rule.partner} as soon as this payment clears, and takes {rule.leadTime} from
               there. {APPLICATION_LANGUAGE}
+            </>
+          ) : rule ? (
+            <>
+              {rule.summary} You chose to send your documents later, so {status.done} of{' '}
+              {status.total} are with us. They are due {DOCUMENT_DEADLINE}, and you can pay
+              now. {DEFERRED_LANGUAGE} Filing through {rule.partner} takes {rule.leadTime}{' '}
+              from a complete submission. {APPLICATION_LANGUAGE}
             </>
           ) : (
             <>
@@ -467,8 +484,12 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
             }}
           >
             {addon.meta} ·{' '}
-            {rule ? 'documents already received' : 'documents collected after payment'} · priced
-            per traveller
+            {rule
+              ? status.complete
+                ? 'documents already received'
+                : `${status.done} of ${status.total} documents received`
+              : 'documents collected after payment'}{' '}
+            · priced per traveller
           </div>
         </div>
         <div className="price">
@@ -515,6 +536,7 @@ export default function Checkout() {
     totalNights,
     tripStartDate,
     tripEndDate,
+    documentsFor,
   } = useTrip();
 
   // One destination is still a booked package and behaves exactly as it always
@@ -1549,6 +1571,7 @@ export default function Checkout() {
                 on={addons.visa}
                 onToggle={() => toggleAddon('visa')}
                 rule={fulfilmentRule(selected, search.nationality)}
+                docs={documentsFor(itinerary[0]?.id)}
               />
             )}
 
@@ -1565,6 +1588,7 @@ export default function Checkout() {
                 on={Boolean(legVisas[entry.id])}
                 onToggle={() => toggleLegVisa(entry.id)}
                 rule={fulfilmentRule(entry.pkg, search.nationality)}
+                docs={documentsFor(entry.id)}
               />
             ))}
 

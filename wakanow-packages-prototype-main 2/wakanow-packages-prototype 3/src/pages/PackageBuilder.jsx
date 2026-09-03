@@ -10,9 +10,13 @@ import RoomGrid from '../components/RoomGrid.jsx';
 import VisaCheck from '../components/VisaCheck.jsx';
 import {
   APPLICATION_LANGUAGE,
+  DEFERRED_LANGUAGE,
+  DOCUMENT_DEADLINE,
+  SHARED_DOCUMENT_IDS,
   documentStatus,
   fulfilmentRule,
   hotelsForLeg,
+  outstandingDocuments,
 } from '../data/fulfilment.js';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { flightCard, sortFlights, sortSummary } from '../lib/flights.js';
@@ -139,6 +143,11 @@ export default function PackageBuilder() {
     totalNights,
     dateLabel,
     travellerSummary,
+    documentsFor,
+    markDocuments,
+    toggleDocument,
+    deferredDocuments,
+    deferDocuments,
   } = useTrip();
 
   const [stepKey, setStepKey] = useState(`${itinerary[0].id}-hotel`);
@@ -147,10 +156,10 @@ export default function PackageBuilder() {
   const [flightSort, setFlightSort] = useState('cheapest');
   const [visaModalLeg, setVisaModalLeg] = useState(null);
   const [visaReason, setVisaReason] = useState(null);
-  // Documents are collected here, in the builder, before payment — see the
-  // note on the visa step. Keyed `legId:documentId` so a multi-city trip
-  // collects one set per destination that needs one.
-  const [documents, setDocuments] = useState({});
+  // The last bulk upload, per leg, so the panel can say what it just took
+  // rather than silently ticking four rows and leaving the traveller to spot
+  // the difference.
+  const [lastUpload, setLastUpload] = useState({});
   // Premium opens by default — it is the recommended tier, and one open card
   // teaches the shape of the other two without three lists fighting for the rail.
   const [openTier, setOpenTier] = useState('Premium');
@@ -290,15 +299,53 @@ export default function PackageBuilder() {
   };
 
   /** Documents for one destination, uploaded before payment. */
-  const uploadedFor = (legId) =>
-    Object.fromEntries(
-      Object.entries(documents)
-        .filter(([key]) => key.startsWith(`${legId}:`))
-        .map(([key, value]) => [key.split(':')[1], value]),
-    );
+  const uploadedFor = (legId) => documentsFor(legId);
 
-  const toggleDocument = (legId, docId) =>
-    setDocuments((prev) => ({ ...prev, [`${legId}:${docId}`]: !prev[`${legId}:${docId}`] }));
+  /**
+   * Send everything in one go.
+   *
+   * One picker, every outstanding document for this destination, and a file
+   * count that decides how many rows it can honestly tick — pick two files
+   * against four requirements and two rows stay open, because a checklist that
+   * marks itself complete on a partial upload is worse than no checklist.
+   *
+   * Shared documents fan out. A passport bio page is the same file in Doha and
+   * in Singapore, so uploading it here satisfies it on every destination of
+   * this trip that asks for it; only destination-specific paperwork (Form 14A)
+   * stays on its own leg.
+   */
+  const uploadAllDocuments = (leg, rule, fileList) => {
+    const files = Array.from(fileList ?? []);
+    if (!files.length) return;
+
+    const outstanding = outstandingDocuments(rule, uploadedFor(leg.id));
+    const taken = outstanding.slice(0, files.length);
+    if (!taken.length) return;
+
+    const keys = [];
+    for (const doc of taken) {
+      keys.push(`${leg.id}:${doc.id}`);
+      if (!SHARED_DOCUMENT_IDS.includes(doc.id)) continue;
+      for (const other of routedVisas) {
+        if (other.leg.id === leg.id) continue;
+        if (other.rule.documents.some((d) => d.id === doc.id)) keys.push(`${other.leg.id}:${doc.id}`);
+      }
+    }
+
+    markDocuments(keys);
+    setLastUpload((prev) => ({
+      ...prev,
+      [leg.id]: { count: files.length, matched: taken.map((doc) => doc.label) },
+    }));
+    // A picker that keeps its last selection cannot fire onChange for the same
+    // file twice, and the traveller reads that as the button being broken.
+    setDocumentsDeferredOff(leg.id);
+  };
+
+  /** Uploading is the answer to "later", so it retires the deferral. */
+  const setDocumentsDeferredOff = (legId) => {
+    if (deferredDocuments[legId]) deferDocuments(legId, false);
+  };
 
   const selectFlight = (id) => {
     const picked = legPriced.flightOptions.find((f) => f.id === id);
@@ -456,15 +503,23 @@ export default function PackageBuilder() {
   }
 
   /* Destinations on this trip whose visa is routed through a partner and is
-     still switched on. Their documents gate checkout, because the whole point
-     of collecting before payment is that payment never happens against an
-     incomplete file. */
+     still switched on. Collecting their documents before payment is the
+     default, because the whole point is that the Holidays team never chases a
+     customer who has already paid. */
   const routedVisas = visas
     .map((leg) => ({ leg, rule: fulfilmentRule(leg.pkg, search.nationality) }))
     .filter(({ leg, rule }) => rule && selFor(leg).addons.includes('visa'));
-  const docsOutstanding = routedVisas.filter(
+
+  /* Missing is a fact; blocking is a choice. A destination whose documents are
+     not in yet is missing them either way — but once the traveller has said
+     "I'll send these later", they have chosen the deferred sequence and the
+     step lets them through with the deadline stated. Only the ones who have
+     neither uploaded nor chosen are still standing at a closed door. */
+  const docsMissing = routedVisas.filter(
     ({ leg, rule }) => !documentStatus(rule, uploadedFor(leg.id)).complete,
   );
+  const docsDeferred = docsMissing.filter(({ leg }) => deferredDocuments[leg.id]);
+  const docsOutstanding = docsMissing.filter(({ leg }) => !deferredDocuments[leg.id]);
 
   return (
     <div className="pg-builder">
@@ -1093,8 +1148,11 @@ export default function PackageBuilder() {
                             <div className="visarow">
                               <div className="body">
                                 <h3 style={{ fontSize: '13px' }}>{addon.title}</h3>
+                                {/* addon.meta already ends with the lead time,
+                                    so this adds what the lead time is measured
+                                    from rather than printing it twice. */}
                                 <div className="meta">
-                                  {addon.meta} · {rule.leadTime} from a complete submission
+                                  {addon.meta}, from a complete submission
                                 </div>
                               </div>
                               <div className="price">
@@ -1122,6 +1180,51 @@ export default function PackageBuilder() {
                                 moment payment clears, rather than an email chain starting after
                                 it.
                               </p>
+
+                              {/* One picker for the lot. The rows below stay —
+                                  they are how a traveller sees WHAT is still
+                                  missing — but nobody has to click four
+                                  buttons to send four files they already have
+                                  in one folder. */}
+                              {!status.complete && (
+                                <label className="docs-all">
+                                  <input
+                                    type="file"
+                                    multiple
+                                    accept="image/*,application/pdf"
+                                    onChange={(event) => {
+                                      uploadAllDocuments(leg, rule, event.target.files);
+                                      event.target.value = '';
+                                    }}
+                                  />
+                                  <span className="docs-all-ic" aria-hidden="true">
+                                    ⇪
+                                  </span>
+                                  <span className="docs-all-b">
+                                    <b>
+                                      Upload all {status.total - status.done} at once
+                                    </b>
+                                    <span>
+                                      Pick them together —{' '}
+                                      {outstandingDocuments(rule, uploadedFor(leg.id))
+                                        .map((doc) => doc.label.toLowerCase())
+                                        .join(', ')}
+                                      . Your passport and photograph carry across every
+                                      destination on this trip, so they are only ever uploaded
+                                      once.
+                                    </span>
+                                  </span>
+                                </label>
+                              )}
+
+                              {lastUpload[leg.id] && (
+                                <p className="docs-took">
+                                  Took {lastUpload[leg.id].count} file
+                                  {lastUpload[leg.id].count > 1 ? 's' : ''} ·{' '}
+                                  {lastUpload[leg.id].matched.join(', ')}
+                                </p>
+                              )}
+
                               {rule.documents.map((doc) => {
                                 const done = Boolean(uploadedFor(leg.id)[doc.id]);
                                 return (
@@ -1142,6 +1245,30 @@ export default function PackageBuilder() {
                                   </div>
                                 );
                               })}
+
+                              {/* Later is a real answer. Stated here, next to
+                                  the thing being deferred, rather than only as
+                                  an escape hatch on a blocked button. */}
+                              {!status.complete && (
+                                <div className="docs-later">
+                                  <button
+                                    type="button"
+                                    className="docs-later-b"
+                                    onClick={() =>
+                                      deferDocuments(leg.id, !deferredDocuments[leg.id])
+                                    }
+                                  >
+                                    {deferredDocuments[leg.id]
+                                      ? 'Actually, upload them now'
+                                      : 'I’ll upload these later'}
+                                  </button>
+                                  <span>
+                                    {deferredDocuments[leg.id]
+                                      ? `Due ${DOCUMENT_DEADLINE}. ${DEFERRED_LANGUAGE}`
+                                      : `Sending them now is faster. If you don’t have them to hand, they are due ${DOCUMENT_DEADLINE}.`}
+                                  </span>
+                                </div>
+                              )}
                             </div>
 
                             <div className="visanote">
@@ -1196,8 +1323,46 @@ export default function PackageBuilder() {
                     </b>
                     <p>
                       {docsOutstanding.length === 1
-                        ? `${docsOutstanding[0].leg.toCity} files through ${docsOutstanding[0].rule.partner}, and the application goes in as soon as your payment clears. Upload the documents above first — paying without them only means we come back to you for them.`
-                        : 'Each of these files through a partner, and the applications go in as soon as your payment clears. Upload the documents above first.'}
+                        ? `${docsOutstanding[0].leg.toCity} files through ${docsOutstanding[0].rule.partner}, and the application goes in as soon as your payment clears. Uploading them now is the fastest route — paying without them only means we come back to you for them.`
+                        : 'Each of these files through a partner, and the applications go in as soon as your payment clears. Uploading them now is the fastest route.'}
+                    </p>
+                    {/* The way past this box without the documents. It exists
+                        because the alternative is a traveller who cannot
+                        continue, and a booking that ends here. */}
+                    <button
+                      type="button"
+                      className="docgate-later"
+                      onClick={() => {
+                        for (const { leg } of docsOutstanding) deferDocuments(leg.id, true);
+                      }}
+                    >
+                      I’ll upload{' '}
+                      {docsOutstanding.length === 1 ? 'them' : 'these'} later — continue
+                    </button>
+                  </div>
+                )}
+
+                {/* Deferred, and said out loud. Not a warning: the traveller
+                    picked this, so the box states the deadline and what the
+                    choice actually changes. */}
+                {docsOutstanding.length === 0 && docsDeferred.length > 0 && (
+                  <div className="docdue">
+                    <b>
+                      Documents for {docsDeferred.map(({ leg }) => leg.toCity).join(' and ')} are
+                      due {DOCUMENT_DEADLINE}
+                    </b>
+                    <p>
+                      You can carry on and pay. {DEFERRED_LANGUAGE} We’ll send you a link to
+                      upload{' '}
+                      {docsDeferred
+                        .flatMap(({ leg, rule }) =>
+                          outstandingDocuments(rule, uploadedFor(leg.id)).map((doc) =>
+                            doc.label.toLowerCase(),
+                          ),
+                        )
+                        .filter((label, i, all) => all.indexOf(label) === i)
+                        .join(', ')}
+                      .
                     </p>
                   </div>
                 )}
