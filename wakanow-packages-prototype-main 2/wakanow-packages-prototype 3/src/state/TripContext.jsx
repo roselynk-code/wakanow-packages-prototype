@@ -45,6 +45,48 @@ export function TripProvider({ children }) {
   const [tier, setTier] = useState('Premium');
   const [bookingSlug, setBookingSlug] = useState('tier-premium');
 
+  /* ── Visa documents ───────────────────────────────────────────────────────
+     Collected in the builder, spent at checkout. They live here rather than in
+     the builder's own state because checkout makes a claim about them — "your
+     documents are already with us" — and a screen that asserts something it
+     cannot see is how a prototype starts lying to the person reading it.
+
+     `documents` is keyed `legId:documentId`. `deferred` is keyed by leg and
+     records a deliberate "I'll send these later", which is a different thing
+     from not having got round to it: it is the traveller choosing the second
+     sequence, and it is what unblocks the step. */
+  const [documents, setDocuments] = useState({});
+  const [deferred, setDeferred] = useState({});
+
+  /** Mark a set of `legId:documentId` keys as received, in one go. */
+  const markDocuments = useCallback((keys) => {
+    if (!keys?.length) return;
+    setDocuments((prev) => {
+      const next = { ...prev };
+      for (const key of keys) next[key] = true;
+      return next;
+    });
+  }, []);
+
+  const toggleDocument = useCallback((legId, docId) => {
+    setDocuments((prev) => ({ ...prev, [`${legId}:${docId}`]: !prev[`${legId}:${docId}`] }));
+  }, []);
+
+  /** Every document held for one destination, as `{ documentId: true }`. */
+  const documentsFor = useCallback(
+    (legId) =>
+      Object.fromEntries(
+        Object.entries(documents)
+          .filter(([key]) => key.startsWith(`${legId}:`))
+          .map(([key, value]) => [key.split(':')[1], value]),
+      ),
+    [documents],
+  );
+
+  const deferDocuments = useCallback((legId, on) => {
+    setDeferred((prev) => ({ ...prev, [legId]: on }));
+  }, []);
+
   const setSearch = useCallback((patch) => {
     setSearchState((prev) => {
       const next = {
@@ -160,10 +202,18 @@ export function TripProvider({ children }) {
       travellerLabel,
       travellerSummary,
       payingTravellers: search.adults + search.children,
+
+      documents,
+      documentsFor,
+      markDocuments,
+      toggleDocument,
+      deferredDocuments: deferred,
+      deferDocuments,
     };
   }, [
-    search, legs, tier, bookingSlug,
+    search, legs, tier, bookingSlug, documents, deferred,
     setSearch, setDates, setTripLength, addLeg, removeLeg, setLegSlug, setLegNights,
+    documentsFor, markDocuments, toggleDocument, deferDocuments,
   ]);
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
