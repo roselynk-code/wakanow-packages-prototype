@@ -175,7 +175,7 @@ export default function PackagesCatalogue() {
       </div>
 
       <footer>
-        <div className="wrap">Wakanow Packages · Prices are illustrative</div>
+        <div className="wrap">Wakanow Packages · Phase 1 prototype · Prices are illustrative</div>
       </footer>
     </div>
   );
@@ -232,7 +232,7 @@ function PackageCard({ pkg, departDate, onOpen }) {
           <div className="was">{naira(was)} separately</div>
           <div className="nowrow">
             <span className="now">{naira(now)}</span>
-            <span className="pp">/person</span>
+            <span className="pp">/adult sharing</span>
           </div>
           <div className="save">You save {naira(save)}</div>
           <span className="cta">See this trip</span>

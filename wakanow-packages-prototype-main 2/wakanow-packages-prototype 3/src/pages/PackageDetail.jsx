@@ -6,6 +6,7 @@ import { naira, delta } from '../lib/format.js';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { findPackage, isTier } from '../data/packages.js';
 import { pricePackage, findFlight, findHotel, findFare, findRoom } from '../lib/pricing.js';
+import { unitLabel } from '../lib/party.js';
 import BackBar from '../components/BackBar.jsx';
 import DateRangePicker from '../components/DateRangePicker.jsx';
 import './PackageDetail.css';
@@ -180,7 +181,9 @@ export default function PackageDetail() {
     nights,
     dateLabel,
     dateLabelWithYear,
-    payingTravellers,
+    party,
+    partyLabel,
+    isSharingBasis,
   } = useTrip();
 
   const [ui, setUi] = useState(() => freshSelection(pkg));
@@ -247,16 +250,30 @@ export default function PackageDetail() {
   const setRoomId = (id) => patchUi({ roomId: id });
   const toggleSaved = () => setUi((prev) => ({ ...prev, saved: !prev.saved }));
 
-  const priced = pricePackage(pkg, { nights, flightId, fareId, hotelId, roomId, addons: addonIds });
+  const priced = pricePackage(pkg, {
+    nights,
+    flightId,
+    fareId,
+    hotelId,
+    roomId,
+    addons: addonIds,
+    party,
+  });
   const { flight, hotel, fare, room, eligible } = priced;
   // The rail's lines already carry the chosen fare and room, so the component
   // rows read their figures from there rather than re-deriving them.
-  const lineOf = (key) => priced.lines.find((l) => l.key === key);
+  // The component rows quote what this party pays for that component, so they
+  // read the party's lines — the sharing-basis lines are the rail's headline
+  // and belong only there.
+  const lineOf = (key) => priced.partyLines.find((l) => l.key === key);
   const flightLine = lineOf('flight');
   const hotelLine = lineOf('hotel');
 
-  const total = priced.bundled * payingTravellers;
-  const paxLabel = `${payingTravellers} ${payingTravellers === 1 ? 'traveller' : 'travellers'}`;
+  // What this party pays — composed from lines that each know their own unit,
+  // not the headline multiplied by heads. A room is per room; one car carries
+  // everyone. See src/lib/party.js.
+  const total = priced.partyBundled;
+  const paxLabel = partyLabel + (priced.rooms > 1 ? ` · ${priced.rooms} rooms` : '');
   const nightsLabel = `${nights} night${nights === 1 ? '' : 's'}`;
   const days = nights + 1;
   const itinerary = layOutItinerary(pkg.itinerary, days);
@@ -661,7 +678,9 @@ export default function PackageDetail() {
                   <div className="price">
                     <b>{naira(flightLine.bundled)}</b>
                     <s>
-                      {eligible ? naira(flightLine.separate) + ' separately' : 'not in the bundle'}
+                      {eligible
+                        ? `${unitLabel(flightLine.unit, flightLine.qty)} · ${naira(flightLine.separate)} separately`
+                        : 'not in the bundle'}
                     </s>
                   </div>
                 </div>
@@ -725,14 +744,16 @@ export default function PackageDetail() {
                     <h3>{hotel.name}</h3>
                     <div className="meta">
                       {room
-                        ? `${nightsLabel} · ${room.name} · ${room.board} · ${naira(room.nightly)} a night`
-                        : `${nightsLabel} · ${hotel.meta} · ${naira(hotel.nightly)} a night`}
+                        ? `${nightsLabel} · ${room.name} · ${room.board} · ${naira(room.nightly)} a night per room`
+                        : `${nightsLabel} · ${hotel.meta} · ${naira(hotel.nightly)} a night per room`}
                     </div>
                   </div>
                   <div className="price">
                     <b>{naira(hotelLine.bundled)}</b>
                     <s>
-                      {eligible ? naira(hotelLine.separate) + ' separately' : 'not in the bundle'}
+                      {eligible
+                        ? `${unitLabel(hotelLine.unit, hotelLine.qty)} · ${naira(hotelLine.separate)} separately`
+                        : 'not in the bundle'}
                     </s>
                   </div>
                 </div>
@@ -918,26 +939,50 @@ export default function PackageDetail() {
                 <div className="was">{eligible ? naira(priced.separate) : '—'}</div>
                 <div className="lbl" style={{ marginTop: '12px' }}>As a package</div>
                 <div className="now">{naira(priced.bundled)}</div>
-                <div className="pp">per person · {paxLabel}</div>
+                {/* The comparable headline the whole catalogue quotes: one
+                    adult's share with two adults in one room. Saying the basis
+                    out loud is the point — it is why this figure is the same
+                    whoever is searching, and why the party total below differs
+                    from it. */}
+                <div className="pp">per adult sharing · 2 adults, 1 room</div>
+                {party.adults === 1 && !party.children && priced.singleSupplement > 0 && (
+                  <div className="pp">
+                    Travelling alone: {naira(priced.singleSupplement)} more — nobody is sharing
+                    the room with you.
+                  </div>
+                )}
                 <div
                   className="savechip"
                   style={{ background: eligible ? 'var(--accent-400)' : 'rgba(255,255,255,.18)' }}
                 >
                   {eligible
-                    ? 'You save ' + naira(priced.save) + ' per person'
+                    ? 'You save ' + naira(priced.save) + ' per adult sharing'
                     : 'No bundle price on this combination'}
                 </div>
               </div>
               <div className="pcbody">
-                {priced.lines.map((line) => (
+                {/* The breakdown is what THIS party pays, so each line states
+                    its own unit: flights by fare, the hotel by room, the
+                    transfer by vehicle. That is what makes the total add up to
+                    something other than the headline times heads. */}
+                {priced.partyLines.map((line) => (
                   <div className="line" key={line.key}>
-                    <span>{line.label}</span>
+                    <span>
+                      {line.label}
+                      <em className="wk-qty">{unitLabel(line.unit, line.qty)}</em>
+                    </span>
                     <b>{naira(line.bundled)}</b>
                   </div>
                 ))}
                 <div className="line total">
                   <span>Total for {paxLabel}</span><b>{naira(total)}</b>
                 </div>
+                {eligible && priced.partySave > 0 && !isSharingBasis && (
+                  <div className="line">
+                    <span>Saved against booking separately</span>
+                    <b>{naira(priced.partySave)}</b>
+                  </div>
+                )}
 
                 <div className="pssbox">
                   <div className="t"><em>PSS</em> Pay Small Small</div>

@@ -6,17 +6,16 @@ import { TIERS, findPackage, isTier } from '../data/packages.js';
 import { formatRange, formatWeekday } from '../lib/dates.js';
 import { flightCard } from '../lib/flights.js';
 import { naira, nairaShort } from '../lib/format.js';
-import {
-  APPLICATION_LANGUAGE,
-  DEFERRED_LANGUAGE,
-  DOCUMENT_DEADLINE,
-  PAY_DISCLAIMER,
-  POST_PAYMENT_COMMITMENT,
-  REFUSAL_SUMMARY,
-  documentStatus,
-  fulfilmentRule,
-} from '../data/fulfilment.js';
 import { priceItinerary, visaLegs } from '../lib/itinerary.js';
+import {
+  AGE_BANDS,
+  fareUnits,
+  tidy,
+  tourUnits,
+  unitLabel,
+  vehiclesFor,
+  visaUnits,
+} from '../lib/party.js';
 import { cardPrice, findFare, findRoom, pricePackage } from '../lib/pricing.js';
 import { useTrip } from '../state/useTrip.js';
 import './Checkout.css';
@@ -95,36 +94,14 @@ const OPTIONAL_ITEMS = [
   { key: 'kalabash', label: 'Kalabash Platinum Travel Card', price: 4500, isNew: false, group: 'existing' },
 ];
 
-/**
- * Nothing paid is ticked for the customer.
- *
- * Reminders used to arrive switched on and charged for, while the visa and the
- * tour the customer had actually chosen in the builder arrived switched off —
- * so the bill contained things nobody asked for and lacked things they did.
- * Package components are now seeded from the builder's booking (see
- * `addonsFromBooking`); everything optional and paid starts off.
- */
 const INITIAL_ADDONS = {
-  transfer: false,
+  transfer: true,
   safari: false,
   visa: false,
-  callReminder: false,
-  smsReminder: false,
+  callReminder: true,
+  smsReminder: true,
   kalabash: false,
 };
-
-/** Seed the checkout toggles from what the customer actually built. */
-function addonsFromBooking(booking) {
-  if (!booking) return INITIAL_ADDONS;
-  const leg = booking.legs?.[0];
-  if (!leg) return INITIAL_ADDONS;
-  return {
-    ...INITIAL_ADDONS,
-    transfer: Boolean(leg.includeTransfer),
-    safari: (leg.tourIds ?? []).length > 0,
-    visa: Boolean(leg.visa),
-  };
-}
 
 /** The tour the mockup authored for the Dubai tiers. */
 const AUTHORED_TOUR = {
@@ -152,7 +129,46 @@ const PRODUCTS = {
   tours: { eyebrow: 'Tour', icon: '🗺' },
 };
 
-const extraAmount = (item, travellers) => (item.perTraveller ? item.price * travellers : item.price);
+/**
+ * What an optional extra is actually sold by.
+ *
+ * This used to be `item.perTraveller ? price × heads : price`, which charged a
+ * couple two airport transfers — one car, billed twice. A transfer is per
+ * vehicle, a tour is per person at the child share, a visa is per traveller
+ * including infants, and a reminder is one per booking however many people are
+ * on it. See src/lib/party.js.
+ */
+const extraUnitOf = (item) => {
+  if (item.key === 'transfer') return 'vehicle';
+  if (item.key === 'safari') return 'tour';
+  if (item.key?.startsWith('visa') || item.perTraveller) return 'head';
+  return 'booking';
+};
+
+const extraQty = (item, party, transfer) => {
+  switch (extraUnitOf(item)) {
+    case 'vehicle':
+      return vehiclesFor(party, transfer);
+    case 'tour':
+      return tourUnits(party);
+    case 'head':
+      return visaUnits(party);
+    default:
+      return 1;
+  }
+};
+
+const extraAmount = (item, party, transfer) =>
+  tidy(item.price * extraQty(item, party, transfer));
+
+/** How an extra's quantity reads beside its amount — nothing for a per-booking
+ *  row, which has no quantity worth stating. */
+const extraQtyLabel = (item, party, transfer) => {
+  const unit = extraUnitOf(item);
+  if (unit === 'booking') return null;
+  const as = unit === 'vehicle' ? 'vehicle' : unit === 'tour' ? 'place' : 'person';
+  return unitLabel(as, extraQty(item, party, transfer));
+};
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -437,11 +453,7 @@ function AddonRow({ icon, title, isNew, desc, price, was, on, onToggle }) {
 /** The amber visa card. One destination shows one; a multi-city trip shows one
  *  per country that needs a visa, which is why it is a component and not inline
  *  markup — the copy and the price are the destination's own. */
-function VisaCard({ heading, city, country, nationality, addon, on, onToggle, rule, docs }) {
-  // What checkout may claim about documents is whatever the builder actually
-  // holds — see the note in TripContext. A card that says "already with us"
-  // over an empty file is the exact failure this whole flow exists to avoid.
-  const status = documentStatus(rule, docs ?? {});
+function VisaCard({ heading, city, country, nationality, addon, on, onToggle }) {
   return (
     <div className="card" style={{ border: '2px solid #C77C00', background: '#FFFCF5' }}>
       <div className="cardhead">
@@ -473,25 +485,9 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
           You need a visa for {city} on a {nationality} passport
         </div>
         <div style={{ fontSize: '12px', color: '#7A5300', lineHeight: '18px' }}>
-          {rule && status.complete ? (
-            <>
-              {rule.customerSummary} Your documents are already with us, so the application
-              goes in as soon as this payment clears and takes {rule.leadTime} from there.{' '}
-              {APPLICATION_LANGUAGE}
-            </>
-          ) : rule ? (
-            <>
-              {rule.customerSummary} You chose to send your documents later, so {status.done}{' '}
-              of {status.total} are with us. They are due {DOCUMENT_DEADLINE}, and you can pay
-              now. {DEFERRED_LANGUAGE} {APPLICATION_LANGUAGE}
-            </>
-          ) : (
-            <>
-              Wakanow can apply for you. Turn it on below and we'll collect your documents by
-              email after payment. If you already hold a valid {country} visa, leave it off — we
-              will not add it to your price.
-            </>
-          )}
+          Wakanow can apply for you. Turn it on below and we'll collect your documents by email
+          after payment. If you already hold a valid {country} visa, leave it off — we will not add
+          it to your price.
         </div>
       </div>
       <div className="addon" style={{ borderBottom: 'none', paddingBottom: 0 }}>
@@ -506,13 +502,7 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
               lineHeight: '15px',
             }}
           >
-            {addon.meta} ·{' '}
-            {rule
-              ? status.complete
-                ? 'documents already received'
-                : `${status.done} of ${status.total} documents received`
-              : 'documents collected after payment'}{' '}
-            · priced per traveller
+            {addon.meta} · documents collected after payment · priced per traveller
           </div>
         </div>
         <div className="price">
@@ -530,14 +520,8 @@ function VisaCard({ heading, city, country, nationality, addon, on, onToggle, ru
           lineHeight: '15px',
         }}
       >
-        {rule ? (
-          <>⚠ {REFUSAL_SUMMARY}</>
-        ) : (
-          <>
-            ⚠ Documents must be submitted within 5 working days of booking. If you do not submit
-            in time, Wakanow will contact you before your visa application expires.
-          </>
-        )}
+        ⚠ Documents must be submitted within 5 working days of booking. If you do not submit in
+        time, Wakanow will contact you before your visa application expires.
       </div>
     </div>
   );
@@ -552,16 +536,14 @@ export default function Checkout() {
     setTier,
     bookingSlug,
     setBookingSlug,
-    payingTravellers,
+    party,
+    partyLabel,
     itinerary,
     isMultiDestination,
     routeLabel,
     totalNights,
     tripStartDate,
     tripEndDate,
-    documentsFor,
-    booking,
-    party,
   } = useTrip();
 
   // One destination is still a booked package and behaves exactly as it always
@@ -600,14 +582,6 @@ export default function Checkout() {
         .map((entry) => ({ entry, addon: entry.pkg.addons?.find((a) => a.id === 'visa') }))
         .filter((card) => card.addon)
     : [];
-  /* Whether any destination on this trip is fulfilled through a partner and so
-     carries the refusal refund terms. The disclaimers below are conditioned on
-     it: a Dubai-only booking has no visa application to be refused, and showing
-     refusal terms there would be noise the customer has to decode. */
-  const hasManagedVisa = isMultiDestination
-    ? visaCards.some(({ entry }) => fulfilmentRule(entry.pkg, search.nationality))
-    : Boolean(visaAddon && fulfilmentRule(selected, search.nationality));
-
   // The featured tour slot: the tiers keep the authored desert safari, a curated
   // destination offers its own headline excursion instead.
   const tourAddon = bookedTier
@@ -627,20 +601,28 @@ export default function Checkout() {
   const [acceptedTerms, setAcceptedTerms] = useState(true);
   // Seeded once: the party size is fixed for the life of this screen, since the
   // only way to change it is to go back to the search.
+  // One form per traveller, including infants — a lap infant still needs a name
+  // on the ticket. Each carries its age band, because the band is what the fare
+  // was priced on and what the airline will ask for.
   const [travellers, setTravellers] = useState(() =>
-    Array.from({ length: payingTravellers }, (_, i) => ({
+    [
+      ...Array.from({ length: party.adults }, () => 'adult'),
+      ...Array.from({ length: party.children }, () => 'child'),
+      ...Array.from({ length: party.infants }, () => 'infant'),
+    ].map((band, i) => ({
+      band,
       title: 'Mr',
       firstName: '',
       lastName: '',
       middleName: '',
       dob: '',
       gender: 'Male',
-      ...AUTHORED_TRAVELLERS[i],
+      ...(band === 'adult' ? AUTHORED_TRAVELLERS[i] : null),
       nationality: search.nationality,
     })),
   );
 
-  const [addons, setAddons] = useState(() => addonsFromBooking(booking));
+  const [addons, setAddons] = useState(INITIAL_ADDONS);
   /** Multi-city visas, one switch per leg id. Off to begin with, like the single
    *  visa toggle — nobody is charged for a visa they did not ask for. */
   const [legVisas, setLegVisas] = useState({});
@@ -669,48 +651,23 @@ export default function Checkout() {
   }, [copied]);
 
   const priced = pricePackage(selected, { nights, party });
-  const { now: packageNow, save: packageSave } = cardPrice(selected, nights, party);
+  // The comparable headline this package is advertised at, kept for the summary
+  // line — it is not what the bill is built from.
+  const { now: packageNow, save: packageSave } = cardPrice(selected, nights);
 
-  /* ── The price the customer was shown ───────────────────────────────────
-     `base` is the builder's own total for the trip on screen, carried across
-     whole. It used to be the nearest authored tier multiplied by head count,
-     which is why the pay button and the builder quoted different numbers for
-     the same trip — a 125% gap in the worst observed case.
+  // The bill is the party's own total: lines that each know their unit, summed.
+  // It was `headline × head count`, which billed one room per person.
+  const base = isMultiDestination ? trip.partyBundled : priced.partyBundled;
 
-     The fallbacks exist only for someone who lands on /checkout without going
-     through the builder (a bookmarked link, a reloaded tab); that case is
-     surfaced to the customer below rather than papered over. */
-  /* The builder's total for the trip, whole. Checkout does not rebuild it from
-     parts — it applies the difference the customer makes HERE, so whatever
-     checkout does or does not re-offer, the arithmetic starts from the number
-     the customer was actually shown. */
-  const base = booking
-    ? booking.bundled
-    : (isMultiDestination ? trip.bundled : packageNow) * payingTravellers;
-
-  /* Savings come from the same priced itinerary as the total. One derivation,
-     so the builder and this screen cannot disagree — and when a combination
-     genuinely has no bundle price, both screens say so instead of one of them
-     inventing a figure. */
-  const savingsEligible = booking ? booking.eligible : true;
-  const packageSavings = booking
-    ? booking.save
-    : (isMultiDestination ? trip.save : packageSave) * payingTravellers;
-
-  /* Nothing here re-prices behind the customer's back. If the trip on screen
-     ever costs more than the builder quoted, that difference is shown and has
-     to be accepted before paying. */
-  const quotedTotal = booking?.bundled ?? null;
-
-  /** The party-sized label the mockup wrote on every component line. */
-  const withParty = (label) =>
-    payingTravellers > 1 ? `${label} × ${plural(payingTravellers, 'traveller')}` : label;
+  /** A line's quantity, as it reads beside the amount. */
+  const qtyOf = (line) => unitLabel(line.unit, line.qty);
 
   const legLines = (entry, legPriced) =>
-    legPriced.lines.map((line) => ({
+    legPriced.partyLines.map((line) => ({
       key: `${entry.id}:${line.key}`,
-      label: withParty(line.label),
-      amount: line.separate * payingTravellers,
+      label: line.label,
+      qty: qtyOf(line),
+      amount: line.separate,
     }));
 
   // Each component is listed at what it would cost booked separately, so the
@@ -734,8 +691,9 @@ export default function Checkout() {
                 lines: [
                   {
                     key: 'home',
-                    label: withParty(trip.home.label),
-                    amount: trip.home.separate * payingTravellers,
+                    label: trip.home.label,
+                    qty: unitLabel('person', fareUnits(party)),
+                    amount: trip.home.partySeparate,
                   },
                 ],
               },
@@ -747,10 +705,11 @@ export default function Checkout() {
           key: selected.slug,
           title: `${selected.name} · ${search.fromCode} → ${destCode}`,
           strong: false,
-          lines: priced.lines.map((line) => ({
+          lines: priced.partyLines.map((line) => ({
             key: line.key,
-            label: withParty(line.label),
-            amount: line.separate * payingTravellers,
+            label: line.label,
+            qty: qtyOf(line),
+            amount: line.separate,
           })),
         },
       ];
@@ -759,8 +718,9 @@ export default function Checkout() {
     (sum, group) => sum + group.lines.reduce((legSum, line) => legSum + line.amount, 0),
     0,
   );
-  // Superseded: savings are resolved once, from the builder's priced itinerary,
-  // near `base` above. Nothing on this screen derives its own figure any more.
+  // Taken as the difference rather than assumed, so the listed components always
+  // reconcile to the package price however many legs are being added up.
+  const packageSavings = isMultiDestination ? componentTotal - base : priced.partySave;
 
   // The visa and tour lines take the booked package's own figures rather than
   // hardcoded UAE ones; for the three Dubai tiers those are the same numbers.
@@ -799,54 +759,25 @@ export default function Checkout() {
   };
 
   const activeExtras = catalogueItems.filter((item) => isEnabled(item) && offered(item.key));
-  /* Optional package components take their price from the booking, not from the
-     hardcoded catalogue figures, so checkout and the builder move in step. */
-  const bookedAmount = (item) => {
-    if (!booking?.optional) return null;
-    if (item.key === 'transfer') return booking.optional.transfer.amount;
-    if (item.key === 'safari') return booking.optional.tours.amount;
-    if (item.key === 'visa') return booking.optional.visa.amount;
-    return null;
-  };
-  const amountFor = (item) => bookedAmount(item) ?? extraAmount(item, payingTravellers);
-
-  /** Was this component already inside the price the builder quoted? */
-  const inBooking = (item) => {
-    if (!booking?.optional) return false;
-    if (item.key === 'transfer') return booking.optional.transfer.included;
-    if (item.key === 'safari') return booking.optional.tours.included;
-    if (item.key === 'visa') return booking.optional.visa.included;
-    return false;
-  };
-
-  /* Only what changed on this page moves the bill. Switching a package
-     component off refunds exactly what the builder charged for it; switching one
-     on adds exactly what the builder would have. Reminder-style extras are never
-     in the package, so they always add. */
-  const packageCatalogue = catalogueItems.filter((i) => i.group === 'package' && offered(i.key));
-  const packageDelta = packageCatalogue.reduce((sum, item) => {
-    const on = isEnabled(item);
-    const was = inBooking(item);
-    if (on && !was) return sum + amountFor(item);
-    if (!on && was) return sum - amountFor(item);
-    return sum;
-  }, 0);
-  const existingTotal = activeExtras
-    .filter((item) => item.group === 'existing')
-    .reduce((sum, item) => sum + amountFor(item), 0);
-
-  const packageTotal = base + packageDelta;
-  const total = packageTotal + existingTotal;
+  // A package with no transfer of its own offers one as an extra; either way the
+  // vehicle count is read off whatever record states the capacity.
+  const transferRecord = primaryPkg.transfer ?? null;
+  const total = activeExtras.reduce(
+    (sum, item) => sum + extraAmount(item, party, transferRecord),
+    base,
+  );
 
   // A promo never takes the bill below zero, so a flat code on a small basket
   // discounts what is owed and no more.
-  const matchesQuote = quotedTotal !== null && packageTotal === quotedTotal;
-
   const promoDiscount = promo ? Math.min(PROMOS[promo].amount(base), total) : 0;
   const dueTotal = total - promoDiscount;
 
   const updateTraveller = (index, field, value) =>
     setTravellers((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
+
+  /** "Child 2" counts within the band, not across the whole party. */
+  const bandNumber = (index) =>
+    travellers.slice(0, index + 1).filter((t) => t.band === travellers[index].band).length;
 
   /** The three DOB selects write back into the one authored '15 Mar 1990' string. */
   const dobParts = (value) => {
@@ -1162,70 +1093,6 @@ export default function Checkout() {
   const packageLines = activeExtras.filter((i) => i.group === 'package');
   const existingLines = activeExtras.filter((i) => i.group === 'existing');
 
-  /* Landing here without a build — a bookmarked link, a reloaded tab, a shared
-     URL. The old screen silently invented a Dubai package and quoted a price
-     for it. Saying what happened and offering the way back is the honest
-     version, and it keeps the search the customer already had. */
-  if (!booking) {
-    return (
-      <div className="pg-checkout">
-        <nav className="nav">
-          <div className="wrap">
-            <Link to="/" className="logo">
-              waka<i>now</i>
-            </Link>
-          </div>
-        </nav>
-        <div className="wrap" style={{ padding: '48px 0 80px', maxWidth: '620px' }}>
-          <div
-            style={{
-              background: '#fff',
-              border: '1px solid var(--bdr2)',
-              borderRadius: 'var(--rl)',
-              padding: '28px 30px',
-            }}
-          >
-            <h1 style={{ fontSize: '22px', fontWeight: 700, marginBottom: '10px' }}>
-              We don’t have a trip to check out yet
-            </h1>
-            <p style={{ fontSize: '14px', color: 'var(--muted)', lineHeight: '21px' }}>
-              Your trip wasn’t carried over — this can happen if the page was reloaded or the
-              link was opened on its own. Your search is still here, so picking your trip back
-              up takes a moment.
-            </p>
-            <p
-              style={{
-                fontSize: '13.5px',
-                color: 'var(--text)',
-                background: 'var(--page)',
-                borderRadius: 'var(--r)',
-                padding: '10px 14px',
-                margin: '14px 0 18px',
-              }}
-            >
-              {routeLabel} · {totalNights} night{totalNights === 1 ? '' : 's'} ·{' '}
-              {payingTravellers} traveller{payingTravellers === 1 ? '' : 's'}
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate('/builder')}
-              style={{
-                background: 'var(--brand-500)',
-                color: '#fff',
-                borderRadius: 'var(--r)',
-                padding: '11px 18px',
-                fontSize: '14px',
-                fontWeight: 600,
-              }}
-            >
-              Pick up where you left off →
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="pg-checkout">
       <nav className="nav">
@@ -1365,50 +1232,6 @@ export default function Checkout() {
                   : `${selected.city} · ${dateLabel}`
               }
             >
-              {/* Where a destination's land services were routed through a
-                  partner, the summary says so. The traveller chose from that
-                  partner's inventory in the builder; a booking summary that
-                  did not mention it would read as though the choice had been
-                  free. */}
-              {(isMultiDestination
-                ? itinerary.map((entry) => ({
-                    key: entry.id,
-                    city: entry.toCity,
-                    rule: fulfilmentRule(entry.pkg, search.nationality),
-                  }))
-                : [
-                    {
-                      key: selected.slug,
-                      city: selected.city,
-                      rule: fulfilmentRule(selected, search.nationality),
-                    },
-                  ]
-              )
-                .filter((row) => row.rule?.landChannel)
-                .map((row) => (
-                  <div
-                    key={row.key}
-                    style={{
-                      background: '#FFFDF8',
-                      border: '1px solid rgba(199,124,0,.28)',
-                      borderRadius: 'var(--r)',
-                      padding: '11px 13px',
-                      marginBottom: '12px',
-                      fontSize: '11.5px',
-                      color: '#7A5300',
-                      lineHeight: '17px',
-                    }}
-                  >
-                    <b style={{ color: '#8A5A00' }}>
-                      {row.city} hotel and transfers arranged for you
-                    </b>
-                    <div>
-                      Confirmation comes from Wakanow as usual — there is nothing for you to
-                      arrange separately.
-                    </div>
-                  </div>
-                ))}
-
               {summaryBlocks.map((block, blockIndex) => (
                 <Fragment key={block.key}>
                   {block.cards.map((card) => (
@@ -1480,9 +1303,16 @@ export default function Checkout() {
                   const dob = dobParts(t.dob);
                   return (
                     <Fragment key={i}>
+                      {/* The band is not decoration: it is what the fare was
+                          priced on, and what the airline asks for at check-in.
+                          A child at 75% of the adult fare and an infant on a lap
+                          are different tickets, so the form says which one this
+                          traveller is. */}
                       <h3 className="travhead">
                         {i === 0 ? 'Lead Traveller' : `Traveller ${i + 1}`}
-                        <span>Adult {i + 1}</span>
+                        <span>
+                          {AGE_BANDS[t.band].label} {bandNumber(i)} · {AGE_BANDS[t.band].note}
+                        </span>
                       </h3>
 
                       {/* Upload passport: the blue dashed panel from the live
@@ -1732,8 +1562,6 @@ export default function Checkout() {
                 addon={visaAddon}
                 on={addons.visa}
                 onToggle={() => toggleAddon('visa')}
-                rule={fulfilmentRule(selected, search.nationality)}
-                docs={documentsFor(itinerary[0]?.id)}
               />
             )}
 
@@ -1749,8 +1577,6 @@ export default function Checkout() {
                 addon={addon}
                 on={Boolean(legVisas[entry.id])}
                 onToggle={() => toggleLegVisa(entry.id)}
-                rule={fulfilmentRule(entry.pkg, search.nationality)}
-                docs={documentsFor(entry.id)}
               />
             ))}
 
@@ -1886,92 +1712,63 @@ export default function Checkout() {
                     )}
                     {group.lines.map((line) => (
                       <div className="bline" key={line.key}>
-                        <span>{line.label}</span>
+                        <span>
+                          {line.label}
+                          {line.qty && <em className="wk-qty">{line.qty}</em>}
+                        </span>
                         <b>{naira(line.amount)}</b>
                       </div>
                     ))}
                   </Fragment>
                 ))}
 
-                {/* A saving is claimed only where one exists. When the build
-                    is outside the bundle, this says so in the same words the
-                    builder used rather than quietly inventing a figure. */}
-                {savingsEligible && packageSavings > 0 ? (
-                  <>
-                    <div className="bline disc">
-                      <span>
-                        Package savings
-                        <span className="new" style={{ marginLeft: '4px' }}>
-                          New
-                        </span>
-                      </span>
-                      <b>−{naira(packageSavings)}</b>
-                    </div>
+                <div className="bline disc">
+                  <span>
+                    Package savings
+                    <span className="new" style={{ marginLeft: '4px' }}>
+                      New
+                    </span>
+                  </span>
+                  <b>−{naira(packageSavings)}</b>
+                </div>
 
-                    <div className="savings">
-                      <span className="ic">🏷</span>
-                      <div>
-                        <div className="t">
-                          You save {naira(packageSavings)} as a package
-                          <span className="new" style={{ marginLeft: '4px' }}>
-                            New
-                          </span>
-                        </div>
-                        {/* Reads off the live basket, before any promo: this line
-                            compares booking separately with booking as a package,
-                            which a campaign code is not part of. */}
-                        <div className="s">
-                          {naira(total + packageSavings)} booked separately → {naira(total)} as a
-                          package
-                        </div>
-                      </div>
+                <div className="savings">
+                  <span className="ic">🏷</span>
+                  <div>
+                    <div className="t">
+                      You save {naira(packageSavings)} as a package
+                      <span className="new" style={{ marginLeft: '4px' }}>
+                        New
+                      </span>
                     </div>
-                  </>
-                ) : (
-                  <div className="savings" style={{ background: 'var(--page)' }}>
-                    <span className="ic">🏷</span>
-                    <div>
-                      <div className="t">No package discount on this combination</div>
-                      <div className="s">
-                        This customised trip does not currently qualify for an additional
-                        package discount. Every component is priced individually below.
-                      </div>
+                    {/* Reads off the live basket, before any promo: this line
+                        compares booking separately with booking as a package,
+                        which a campaign code is not part of. */}
+                    <div className="s">
+                      {naira(total + packageSavings)} booked separately → {naira(total)} as a
+                      package
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* The first of the live rail's two totals. Named for what it is
                     — the package before add-ons — rather than a bare "Total"
                     that would be untrue twice on one card. */}
                 <div className="btotal">
-                  <span>
-                    Package total for {payingTravellers} traveller
-                    {payingTravellers === 1 ? '' : 's'}
-                  </span>
-                  <b>{naira(packageTotal)}</b>
+                  <span>Package total</span>
+                  <b>{naira(base)}</b>
                 </div>
-                <div className="perperson">
-                  {naira(Math.round(packageTotal / Math.max(1, payingTravellers)))} per person
+                {/* The advertised figure and the bill are two different
+                    questions, and the rail says so rather than letting the gap
+                    look like an error: packages are quoted per adult sharing so
+                    they compare like with like, and this party's rooms, ages and
+                    vehicles are what it actually pays. */}
+                <div className="nohidden">
+                  {partyLabel}
+                  {priced.rooms > 1 ? ` in ${priced.rooms} rooms` : ''} ·{' '}
+                  {naira(isMultiDestination ? trip.bundled : priced.bundled)} per adult sharing · no
+                  hidden fees, all taxes included
                 </div>
-                <div className="nohidden">No hidden fees — price includes all taxes</div>
-
-                {/* Same trip, same number as the builder. Said plainly, because
-                    the customer's own arithmetic is what builds trust here. */}
-                {/* If the trip on screen no longer matches the quote — because
-                    something was changed here — the difference is named rather
-                    than left for the customer to find. */}
-                {booking && !matchesQuote && (
-                  <div className="pricechange">
-                    <b>You changed your trip on this page</b>
-                    <p>
-                      You were quoted {naira(quotedTotal)} in the builder. Your trip now costs{' '}
-                      {naira(packageTotal)} — a difference of{' '}
-                      {naira(Math.abs(packageTotal - quotedTotal))}{' '}
-                      {packageTotal > quotedTotal ? 'more' : 'less'}, from the add-ons you
-                      switched on or off below.
-                    </p>
-                  </div>
-                )}
 
                 {activeExtras.length > 0 && (
                   <>
@@ -1982,23 +1779,25 @@ export default function Checkout() {
                       <div className="bline" key={item.key}>
                         <span>
                           {item.label}
-                          {item.perTraveller && payingTravellers > 1
-                            ? ` × ${payingTravellers}`
-                            : ''}
+                          {extraQtyLabel(item, party, transferRecord) && (
+                            <em className="wk-qty">
+                              {extraQtyLabel(item, party, transferRecord)}
+                            </em>
+                          )}
                           {item.isNew && (
                             <span className="new" style={{ marginLeft: '4px' }}>
                               New
                             </span>
                           )}
                         </span>
-                        <b>{naira(amountFor(item))}</b>
+                        <b>{naira(extraAmount(item, party, transferRecord))}</b>
                       </div>
                     ))}
 
                     {existingLines.map((item) => (
                       <div className="bline" key={item.key}>
                         <span>{item.label}</span>
-                        <b>{naira(amountFor(item))}</b>
+                        <b>{naira(extraAmount(item, party, transferRecord))}</b>
                       </div>
                     ))}
                   </>
@@ -2038,13 +1837,8 @@ export default function Checkout() {
                 )}
 
                 <div className="btotal grand">
-                  <span>
-                    Total for {payingTravellers} traveller{payingTravellers === 1 ? '' : 's'}
-                  </span>
+                  <span>Total</span>
                   <b>{naira(dueTotal)}</b>
-                </div>
-                <div className="perperson">
-                  {naira(Math.round(dueTotal / Math.max(1, payingTravellers)))} per person
                 </div>
 
                 <div
@@ -2082,26 +1876,8 @@ export default function Checkout() {
                       lineHeight: '18px',
                     }}
                   >
-                    Your trip is held. You’ll be taken to secure payment next.
-                    {/* Refund terms restated after payment, with the promise
-                        that makes a refusal a phone call rather than a wait.
-                        Repetition is the point: this is the copy a customer
-                        goes looking for when the news is bad. */}
-                    {hasManagedVisa && (
-                      <span
-                        style={{
-                          display: 'block',
-                          marginTop: '10px',
-                          paddingTop: '10px',
-                          borderTop: '1px solid #D1D1DB',
-                        }}
-                      >
-                        <b style={{ display: 'block', marginBottom: '4px', color: '#3D3D4E' }}>
-                          If your visa is refused
-                        </b>
-                        {REFUSAL_SUMMARY} {POST_PAYMENT_COMMITMENT}
-                      </span>
-                    )}
+                    Phase 1 ends here — this is where Packages hands off to the existing Wakanow
+                    payment flow.
                     <button
                       type="button"
                       onClick={() => navigate('/')}
@@ -2120,31 +1896,15 @@ export default function Checkout() {
                     </button>
                   </div>
                 ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="paybtn"
-                      disabled={!acceptedTerms}
-                      title={acceptedTerms ? undefined : 'Accept the terms above to continue'}
-                      onClick={() => setHandedOff(true)}
-                    >
-                      Proceed to Pay {naira(dueTotal)}
-                    </button>
-                    {/* The last thing said before the point of no return, and
-                        only where a visa is actually being applied for. */}
-                    {hasManagedVisa && (
-                      <p
-                        style={{
-                          marginTop: '8px',
-                          fontSize: '10.5px',
-                          color: 'var(--text-muted)',
-                          lineHeight: '15px',
-                        }}
-                      >
-                        {PAY_DISCLAIMER}
-                      </p>
-                    )}
-                  </>
+                  <button
+                    type="button"
+                    className="paybtn"
+                    disabled={!acceptedTerms}
+                    title={acceptedTerms ? undefined : 'Accept the terms above to continue'}
+                    onClick={() => setHandedOff(true)}
+                  >
+                    Proceed to Pay {naira(dueTotal)}
+                  </button>
                 )}
 
                 <div className="shareacts" style={{ flexDirection: 'column', gap: '8px' }}>

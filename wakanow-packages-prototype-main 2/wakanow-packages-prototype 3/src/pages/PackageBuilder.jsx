@@ -8,24 +8,20 @@ import FlightSort from '../components/FlightSort.jsx';
 import HotelCard from '../components/HotelCard.jsx';
 import RoomGrid from '../components/RoomGrid.jsx';
 import VisaCheck from '../components/VisaCheck.jsx';
-import {
-  APPLICATION_LANGUAGE,
-  DEFERRED_LANGUAGE,
-  DOCUMENT_DEADLINE,
-  REFUSAL_REFUND,
-  SHARED_DOCUMENT_IDS,
-  TOURS_NONREFUNDABLE,
-  documentStatus,
-  fulfilmentRule,
-  hotelsForLeg,
-  outstandingDocuments,
-} from '../data/fulfilment.js';
 import { addDays, formatShort, formatWeekday } from '../lib/dates.js';
 import { flightCard, sortFlights, sortSummary } from '../lib/flights.js';
 import { delta, naira, nairaShort } from '../lib/format.js';
 import { flightsForLeg, priceItinerary, visaLegs } from '../lib/itinerary.js';
 import { findFare, findRoom } from '../lib/pricing.js';
-import { tiersFor } from '../lib/tiers.js';
+import {
+  fareUnits,
+  roomsFor,
+  tidy,
+  tourUnits,
+  unitLabel,
+  vehiclesFor,
+  visaUnits,
+} from '../lib/party.js';
 import { useTrip } from '../state/useTrip.js';
 import './PackageBuilder.css';
 import './PackageBuilder.multi.css';
@@ -38,12 +34,15 @@ const LEG_STEPS = [
   { kind: 'tours', label: 'Tours' },
 ];
 
-/** Steps a traveller can leave entirely alone and still have a valid trip. */
-const OPTIONAL_STEPS = ['transfer', 'tours'];
-
 /** The passport countries the search offers, mirrored on the visa step's
  *  Check Requirements panel — nationality is what the visa rule turns on. */
 const NATIONALITIES = ['Nigeria', 'Ghana', 'United Kingdom', 'United States', 'South Africa'];
+
+const TIERS = [
+  { name: 'Essential', mod: 'ess', slug: 'tier-essential', price: 1486000, save: 85000 },
+  { name: 'Premium', mod: 'pre', slug: 'tier-premium', price: 1728000, save: 186000 },
+  { name: 'Luxury', mod: 'lux', slug: 'tier-luxury', price: 3120000, save: 358000 },
+];
 
 const WHATSAPP_PATH =
   'M12 2a10 10 0 00-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2zm5.8 14.2c-.2.7-1.4 1.3-2 1.4-.5.1-1.1.1-1.8-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2 0 .4-.1.6l-.4.5c-.1.2-.3.3-.1.6.1.3.6 1.1 1.4 1.8 1 .9 1.8 1.1 2 1.3.3.1.4.1.6-.1l.8-.9c.2-.2.4-.2.6-.1l2 1c.2.1.4.2.4.3.1.2.1.7-.1 1.3z';
@@ -55,6 +54,18 @@ const shortName = (name) => name.split(' · ')[0];
 const tourAddons = (pkg) => (pkg.addons ?? []).filter((addon) => addon.id !== 'visa');
 
 const visaAddon = (pkg) => (pkg.addons ?? []).find((addon) => addon.id === 'visa');
+
+/**
+ * The hotel a custom build ends on is the strongest signal of which tier it
+ * resembles — the tiers differ most on where you stay. Ranked within the
+ * package's own list rather than by hotel id, so it works for any destination.
+ */
+function closestTier(hotel, hotels) {
+  const ranked = [...hotels].sort((a, b) => a.nightly - b.nightly);
+  if (hotel.id === ranked[0]?.id) return TIERS[0];
+  if (hotel.id === ranked[ranked.length - 1]?.id) return TIERS[2];
+  return TIERS[1];
+}
 
 /** Everything the traveller can change on one leg of the trip. */
 function defaultSelection(entry) {
@@ -124,22 +135,17 @@ export default function PackageBuilder() {
     itinerary,
     isMultiDestination,
     routeLabel,
-    payingTravellers,
+    party,
+    partyLabel,
+    isSharingBasis,
     search,
-    setTier,
     setSearch,
     setDates,
+    setTier,
     setBookingSlug,
     totalNights,
     dateLabel,
     travellerSummary,
-    documentsFor,
-    markDocuments,
-    toggleDocument,
-    deferredDocuments,
-    deferDocuments,
-    party,
-    confirmBooking,
   } = useTrip();
 
   const [stepKey, setStepKey] = useState(`${itinerary[0].id}-hotel`);
@@ -148,14 +154,6 @@ export default function PackageBuilder() {
   const [flightSort, setFlightSort] = useState('cheapest');
   const [visaModalLeg, setVisaModalLeg] = useState(null);
   const [visaReason, setVisaReason] = useState(null);
-  // The last bulk upload, per leg, so the panel can say what it just took
-  // rather than silently ticking four rows and leaving the traveller to spot
-  // the difference.
-  const [lastUpload, setLastUpload] = useState({});
-  // Premium opens by default — it is the recommended tier, and one open card
-  // teaches the shape of the other two without three lists fighting for the rail.
-  const [openTier, setOpenTier] = useState('Premium');
-  const [appliedTier, setAppliedTier] = useState(null);
 
   // The itinerary is owned by the search bar, so a destination can be added,
   // dropped or swapped while this screen is mounted. Re-defaulting during
@@ -191,48 +189,18 @@ export default function PackageBuilder() {
   const previous = steps[stepIndex - 1];
   const following = steps[stepIndex + 1];
 
-  const priced = priceItinerary(itinerary, selections, search, party);
+  const priced = priceItinerary(itinerary, selections, search);
 
   const entry = current.entry;
   const sel = entry ? selFor(entry) : null;
   const legPriced = entry ? priced.legPrices[entry.index] : null;
-
-  /* What removing every tour on this leg actually saves, priced for the real
-     party — so the remove button can name the consequence instead of leaving
-     the customer to discover it in the total. */
-  const tourTotal = entry
-    ? (legPriced?.priced.lines ?? [])
-        .filter((line) => line.key === 'tours' || line.key.startsWith('addon:'))
-        .filter((line) => !line.key.endsWith(':visa'))
-        .reduce((sum, line) => sum + line.bundled, 0)
-    : 0;
   const hotel = legPriced?.priced.hotel;
   const room = legPriced?.priced.room;
   const flight = legPriced?.priced.flight;
   const fare = legPriced?.priced.fare;
-  const lineOf = (lp, key) => lp.priced.lines.find((l) => l.key === key);
-
-  /* Destination Fulfilment Rules. The rule is keyed on destination × passport,
-     so it is resolved per leg and re-resolved whenever the passport changes on
-     the visa step's Check Requirements panel. Null is the ordinary case. */
-  const legRule = entry ? fulfilmentRule(entry.pkg, search.nationality) : null;
-  const legHotels = entry
-    ? hotelsForLeg(entry.pkg, legRule)
-    : { hotels: [], hidden: 0, partner: null };
-
-  /* A channel rule can start applying mid-build — change the passport on the
-     visa step and walk back to the hotel step and the inventory has changed
-     under you. Re-pointing during render rather than in an effect means no
-     frame paints a price for a hotel we cannot sell this traveller. */
-  if (
-    entry &&
-    legRule?.landChannel &&
-    legHotels.hotels.length &&
-    !legHotels.hotels.some((item) => item.id === sel.hotelId)
-  ) {
-    const first = legHotels.hotels[0];
-    patchSel(entry.id, { hotelId: first.id, roomId: findRoom(first)?.id });
-  }
+  // The rail totals what this party pays, so it reads the party's lines — each
+  // of which knows whether it is sold per person, per room or per vehicle.
+  const lineOf = (lp, key) => lp.priced.partyLines.find((l) => l.key === key);
 
   /* The results-card shape for this leg's flights. A leg that is not the whole
      trip is a one-way hop, so it gets no return timeline — the journey home is
@@ -250,26 +218,13 @@ export default function PackageBuilder() {
     flightCards.find((f) => f.card.id === card.id),
   );
 
-  const total = priced.bundled;
-  const perPerson = priced.perPerson;
-
-  /* Occupancy: a room sleeps what the hotel says it sleeps. Checked here, where
-     the party is set, rather than surfacing as a failed booking after payment. */
-  const maxPerRoom = 2;
-  const roomCapacity = party.rooms * maxPerRoom;
-  const overOccupied = party.travellers > roomCapacity;
-  const roomsNeeded = Math.ceil(party.travellers / maxPerRoom);
-
-  /* The three auto-generated packages for this search. Dubai returns the
-     authored records; every other destination is composed from its own
-     inventory, so the rail cannot show a Dubai hotel in front of a Doha trip. */
-  const tiers = isMultiDestination
-    ? []
-    : tiersFor(itinerary[0].pkg, {
-        nights: itinerary[0].nights,
-        nationality: search.nationality,
-        party,
-      });
+  // What this party pays across every leg. The per-adult-sharing headline is
+  // `priced.bundled`, and the rail shows both — they only coincide when the
+  // party is two adults in one room.
+  const total = priced.partyBundled;
+  // Rooms are decided by the party and the room type, not by the search alone:
+  // asking for one room for five people cannot sleep five in a double.
+  const rooms = Math.max(...priced.legPrices.map((l) => l.priced.rooms), 1);
 
   useEffect(() => {
     if (!visaModalLeg) return undefined;
@@ -309,55 +264,6 @@ export default function PackageBuilder() {
     patchSel(entry.id, { hotelId: id, roomId: findRoom(picked)?.id });
   };
 
-  /** Documents for one destination, uploaded before payment. */
-  const uploadedFor = (legId) => documentsFor(legId);
-
-  /**
-   * Send everything in one go.
-   *
-   * One picker, every outstanding document for this destination, and a file
-   * count that decides how many rows it can honestly tick — pick two files
-   * against four requirements and two rows stay open, because a checklist that
-   * marks itself complete on a partial upload is worse than no checklist.
-   *
-   * Shared documents fan out. A passport bio page is the same file in Doha and
-   * in Singapore, so uploading it here satisfies it on every destination of
-   * this trip that asks for it; only destination-specific paperwork (Form 14A)
-   * stays on its own leg.
-   */
-  const uploadAllDocuments = (leg, rule, fileList) => {
-    const files = Array.from(fileList ?? []);
-    if (!files.length) return;
-
-    const outstanding = outstandingDocuments(rule, uploadedFor(leg.id));
-    const taken = outstanding.slice(0, files.length);
-    if (!taken.length) return;
-
-    const keys = [];
-    for (const doc of taken) {
-      keys.push(`${leg.id}:${doc.id}`);
-      if (!SHARED_DOCUMENT_IDS.includes(doc.id)) continue;
-      for (const other of routedVisas) {
-        if (other.leg.id === leg.id) continue;
-        if (other.rule.documents.some((d) => d.id === doc.id)) keys.push(`${other.leg.id}:${doc.id}`);
-      }
-    }
-
-    markDocuments(keys);
-    setLastUpload((prev) => ({
-      ...prev,
-      [leg.id]: { count: files.length, matched: taken.map((doc) => doc.label) },
-    }));
-    // A picker that keeps its last selection cannot fire onChange for the same
-    // file twice, and the traveller reads that as the button being broken.
-    setDocumentsDeferredOff(leg.id);
-  };
-
-  /** Uploading is the answer to "later", so it retires the deferral. */
-  const setDocumentsDeferredOff = (legId) => {
-    if (deferredDocuments[legId]) deferDocuments(legId, false);
-  };
-
   const selectFlight = (id) => {
     const picked = legPriced.flightOptions.find((f) => f.id === id);
     patchSel(entry.id, { flightId: id, fareId: findFare(picked)?.id });
@@ -388,112 +294,33 @@ export default function PackageBuilder() {
     setVisaModalLeg(null);
   };
 
-  /**
-   * A tier is a starting point, never a replacement for the build.
-   *
-   * Selecting one used to send an authored tier straight to checkout, so the
-   * customer's own choices were silently discarded and the price came from a
-   * package they had not built. Every tier now fills the builder with its
-   * choices and leaves the traveller here, where they can see what changed and
-   * keep editing. Nothing reaches checkout except the trip on screen.
-   */
   const selectTier = (tier) => {
     setTier(tier.name);
-    setAppliedTier(tier.name);
-    if (tier.selection) patchSel(itinerary[0].id, tier.selection);
-    setStepKey(`${itinerary[0].id}-hotel`);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setBookingSlug(tier.slug);
+    navigate('/checkout');
   };
 
-  /* The optional components of a single-destination trip, priced for the real
-     party. A multi-city trip keeps everything inside its legs, so the whole
-     total is core and checkout offers no separate toggles. */
-  const optionalPricing = (() => {
-    const first = itinerary[0];
-    const firstSel = selFor(first);
-    const firstPriced = priced.legPrices[0]?.priced;
-    const lineAmount = (predicate) =>
-      (firstPriced?.lines ?? []).filter(predicate).reduce((sum, l) => sum + l.bundled, 0);
-    const visaLine = lineAmount((l) => l.key === 'addon:visa');
-    const tourLines = lineAmount(
-      (l) => l.key === 'tours' || (l.key.startsWith('addon:') && l.key !== 'addon:visa'),
-    );
-    const transferLine = lineAmount((l) => l.key === 'transfer');
-    const visaUnit = visaAddon(first.pkg)?.price ?? 0;
-    return {
-      transfer: {
-        included: Boolean(firstSel.includeTransfer && first.pkg.transfer),
-        amount: transferLine || first.pkg.transfer?.price || 0,
-      },
-      tours: { included: Boolean(firstSel.includeTours), amount: tourLines || 0 },
-      visa: {
-        included: (firstSel.addons ?? []).includes('visa'),
-        amount: visaLine || visaUnit * party.travellers,
-      },
-    };
-  })();
-
-  /**
-   * Hand the built trip to checkout, priced.
-   *
-   * This used to snap the build to the nearest authored tier and let checkout
-   * multiply that by head count, so the price on the pay button had almost
-   * nothing to do with what the customer had assembled. The itinerary the
-   * customer actually built is now the only thing that crosses over, priced
-   * once, here, with its saving already resolved.
-   */
   const checkout = () => {
-    confirmBooking({
-      pricedAt: Date.now(),
-      party,
-      selections,
-      legs: itinerary.map((entry) => {
-        const legPriced = priced.legPrices.find((l) => l.entry.id === entry.id)?.priced;
-        const sel = selFor(entry);
-        return {
-          id: entry.id,
-          city: entry.toCity,
-          country: entry.country,
-          slug: entry.pkg.slug,
-          nights: entry.nights,
-          startDate: entry.startDate,
-          endDate: entry.endDate,
-          hotel: legPriced?.hotel?.name,
-          room: legPriced?.room?.label,
-          flight: legPriced?.flight?.name,
-          fare: legPriced?.fare?.label,
-          includeTransfer: sel.includeTransfer,
-          tourIds: sel.includeTours ? sel.tourIds : [],
-          visa: (sel.addons ?? []).includes('visa'),
-          lines: legPriced?.lines ?? [],
-        };
-      }),
-      /* What each optional component costs for THIS party, and whether it is
-         currently in. Checkout re-offers them at exactly these prices, so a
-         toggle there moves the bill by the same amount it moved here — and the
-         core below excludes whatever is in, so nothing is counted twice. */
-      optional: optionalPricing,
-      core:
-        priced.bundled -
-        (optionalPricing.transfer.included ? optionalPricing.transfer.amount : 0) -
-        (optionalPricing.tours.included ? optionalPricing.tours.amount : 0) -
-        (optionalPricing.visa.included ? optionalPricing.visa.amount : 0),
-      home: priced.home,
-      eligible: priced.eligible,
-      bundled: priced.bundled,
-      separate: priced.separate,
-      save: priced.save,
-      perPerson: priced.perPerson,
-      startedFromTier: appliedTier,
-    });
-    setBookingSlug(itinerary[0].pkg.slug);
+    if (isMultiDestination) {
+      // No tier is a multi-city trip, so there is nothing to approximate here:
+      // checkout reads the itinerary itself from context and prices every leg.
+      setBookingSlug(itinerary[0].pkg.slug);
+      navigate('/checkout');
+      return;
+    }
+    // An approximation: the builder's exact custom combination has no catalogue
+    // record, so checkout shows the closest tier.
+    const only = itinerary[0];
+    const closest = closestTier(priced.legPrices[0].priced.hotel, only.pkg.hotels);
+    setTier(closest.name);
+    setBookingSlug(closest.slug);
     navigate('/checkout');
   };
 
   const shareOnWhatsApp = () => {
     window.open(
       'https://wa.me/?text=' +
-        encodeURIComponent('My Wakanow package — ' + naira(total) + ' per person'),
+        encodeURIComponent(`My Wakanow package — ${naira(total)} for ${partyLabel}`),
       '_blank',
       'noopener',
     );
@@ -504,20 +331,28 @@ export default function PackageBuilder() {
   const totalLines = (legEntry, lp) => {
     const choice = selFor(legEntry);
     const pkg = legEntry.pkg;
+    const hotelLine = lineOf(lp, 'hotel');
+    const flightLine = lineOf(lp, 'flight');
     const rows = [
       {
         key: 'hotel',
         label: `${shortName(lp.priced.hotel.name)} · ${lp.priced.room?.name ?? 'Room'}`,
-        amount: lineOf(lp, 'hotel').bundled,
+        qty: unitLabel(hotelLine.unit, hotelLine.qty),
+        amount: hotelLine.bundled,
       },
       {
         key: 'flight',
         label: `${shortName(lp.priced.flight.name)} · ${legEntry.isOnly ? 'return' : 'one way'}`,
-        amount: lineOf(lp, 'flight').bundled,
+        qty: unitLabel(flightLine.unit, flightLine.qty),
+        amount: flightLine.bundled,
       },
     ];
 
     if (pkg.transfer) {
+      // A switched-off component is not in the priced lines, but the rail still
+      // shows what it would cost — so its quantity is computed the same way the
+      // pricing would have computed it.
+      const vehicles = vehiclesFor(party, pkg.transfer);
       rows.push({
         key: 'transfer',
         // "Careem · private airport transfers" is the supplier and the product.
@@ -525,14 +360,17 @@ export default function PackageBuilder() {
         label: pkg.transfer.name.includes(' · ')
           ? `${shortName(pkg.transfer.name)} transfer`
           : pkg.transfer.name,
-        amount: pkg.transfer.price,
+        qty: unitLabel('vehicle', vehicles),
+        amount: tidy(pkg.transfer.price * vehicles),
         off: !choice.includeTransfer,
       });
     }
 
     const chosen = tourAddons(pkg).filter((addon) => choice.tourIds.includes(addon.id));
-    const toursAmount =
-      chosen.reduce((sum, addon) => sum + addon.price, 0) + (pkg.tours?.price ?? 0);
+    const tours = tourUnits(party);
+    const toursAmount = tidy(
+      (chosen.reduce((sum, addon) => sum + addon.price, 0) + (pkg.tours?.price ?? 0)) * tours,
+    );
     const toursLabel =
       chosen.length === 0
         ? (pkg.tours?.label ?? 'Tours')
@@ -542,16 +380,19 @@ export default function PackageBuilder() {
     rows.push({
       key: 'tours',
       label: toursLabel,
+      qty: toursAmount ? unitLabel('place', tours) : null,
       amount: toursAmount,
       off: !choice.includeTours || toursAmount === 0,
     });
 
     const visa = visaAddon(pkg);
     if (visa) {
+      // Every traveller needs their own visa, infants included.
       rows.push({
         key: 'visa',
         label: shortName(visa.title),
-        amount: visa.price,
+        qty: unitLabel('person', visaUnits(party)),
+        amount: tidy(visa.price * visaUnits(party)),
         off: !choice.addons.includes('visa'),
       });
     }
@@ -577,25 +418,6 @@ export default function PackageBuilder() {
     }
     railItems.push({ key: s.key, step: s, entry: s.entry });
   }
-
-  /* Destinations on this trip whose visa is routed through a partner and is
-     still switched on. Collecting their documents before payment is the
-     default, because the whole point is that the Holidays team never chases a
-     customer who has already paid. */
-  const routedVisas = visas
-    .map((leg) => ({ leg, rule: fulfilmentRule(leg.pkg, search.nationality) }))
-    .filter(({ leg, rule }) => rule && selFor(leg).addons.includes('visa'));
-
-  /* Missing is a fact; blocking is a choice. A destination whose documents are
-     not in yet is missing them either way — but once the traveller has said
-     "I'll send these later", they have chosen the deferred sequence and the
-     step lets them through with the deadline stated. Only the ones who have
-     neither uploaded nor chosen are still standing at a closed door. */
-  const docsMissing = routedVisas.filter(
-    ({ leg, rule }) => !documentStatus(rule, uploadedFor(leg.id)).complete,
-  );
-  const docsDeferred = docsMissing.filter(({ leg }) => deferredDocuments[leg.id]);
-  const docsOutstanding = docsMissing.filter(({ leg }) => !deferredDocuments[leg.id]);
 
   return (
     <div className="pg-builder">
@@ -628,6 +450,7 @@ export default function PackageBuilder() {
         backLabel="Back"
         trail={[
           { label: 'Packages', to: '/' },
+          { label: 'Search results', to: '/results' },
           { label: 'Build your own' },
         ]}
       />
@@ -660,18 +483,6 @@ export default function PackageBuilder() {
 
       <div className="rail">
         <div className="wrap">
-          {/* Where you are, how much is left, and which of it you can ignore.
-              The rail used to number five steps without saying that three of
-              them are optional or that nothing is committed until payment. */}
-          <div className="railmeta">
-            <b>
-              Step {stepIndex + 1} of {steps.length}
-            </b>
-            <span>
-              {OPTIONAL_STEPS.includes(current.kind) ? 'Optional · ' : ''}
-              You can change any of this before you pay
-            </span>
-          </div>
           {railItems.map((item, i) => (
             <Fragment key={item.key}>
               {i > 0 && <span className="arr">→</span>}
@@ -689,9 +500,6 @@ export default function PackageBuilder() {
                   })}
                 >
                   <span className="n">{item.step.n}</span> {item.step.label}
-                  {OPTIONAL_STEPS.includes(item.step.kind) && (
-                    <em className="opt">optional</em>
-                  )}
                 </div>
               )}
             </Fragment>
@@ -709,102 +517,31 @@ export default function PackageBuilder() {
                   {priced.legPrices.map((leg) => (
                     <div className="tm" key={leg.entry.id}>
                       <div className="tn">{leg.entry.toCity}</div>
-                      <b>{naira(leg.priced.bundled)}</b>
+                      <b>{naira(leg.priced.partyBundled)}</b>
                       <small>
-                        {leg.entry.nights} night{leg.entry.nights === 1 ? '' : 's'}
+                        {leg.entry.nights} night{leg.entry.nights === 1 ? '' : 's'} · {partyLabel}
                       </small>
                     </div>
                   ))}
                   <div className="tierbox-f">
-                    Your trip is priced from the destinations above.
+                    Auto-generated tiers cover single-destination trips only. A multi-city trip is
+                    priced from the legs above.
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="tierbox-h">
-                    Start from a ready-made tier
-                    <span>
-                      {search.toCity} · {totalNights} nights · {payingTravellers} travellers ·
-                      everything stays editable
-                    </span>
-                  </div>
-                  {/* Occupancy is checked where the party is set, not at the
-                      hotel desk. The message names the fix rather than just
-                      refusing. */}
-                  {overOccupied && (
-                    <div className="occwarn">
-                      <b>
-                        {party.travellers} travellers in {party.rooms} room
-                        {party.rooms === 1 ? '' : 's'}
-                      </b>
-                      <p>
-                        These rooms sleep {maxPerRoom} people. You need {roomsNeeded} rooms
-                        for {party.travellers} travellers.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setSearch({ rooms: roomsNeeded })}
-                      >
-                        Add {roomsNeeded - party.rooms} room
-                        {roomsNeeded - party.rooms === 1 ? '' : 's'}
+                  <div className="tierbox-h">Auto-generated packages</div>
+                  {TIERS.map((tier) => (
+                    <div className={`tm ${tier.mod}`} key={tier.name}>
+                      <div className="tn">{tier.name}</div>
+                      <b>{naira(tier.price)}</b>
+                      <small>Save {nairaShort(tier.save)}</small>
+                      <button className="go" onClick={() => selectTier(tier)}>
+                        Select
                       </button>
                     </div>
-                  )}
-                  {tiers.map((tier) => {
-                    const open = openTier === tier.name;
-                    return (
-                      <div className={`tm ${tier.mod}${open ? ' open' : ''}`} key={tier.name}>
-                        <div className="tm-h">
-                          <div className="tn">
-                            {tier.name}
-                            {tier.mod === 'pre' && <span className="tm-rec">Recommended</span>}
-                          </div>
-                          <div className="tm-tag">{tier.tagline}</div>
-                        </div>
-                        <b>{naira(tier.perPerson ?? tier.price)}</b>
-                        <div className="tm-ref">per person</div>
-                        <div className="tm-party">
-                          {naira(tier.partyTotal ?? tier.price)} total for {party.travellers}{' '}
-                          traveller{party.travellers === 1 ? '' : 's'}
-                        </div>
-                        <small>Save {nairaShort(tier.partySave ?? tier.save)}</small>
-
-                        {open && (
-                          <ul className="tm-inc">
-                            {tier.inclusions.map((line) => (
-                              <li className={line.off ? 'off' : ''} key={line.title}>
-                                <span className="ic" aria-hidden="true">{line.icon}</span>
-                                <span className="tx">
-                                  <b>{line.title}</b>
-                                  <em>{line.sub}</em>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-
-                        <button
-                          className="tm-more"
-                          aria-expanded={open}
-                          onClick={() => setOpenTier(open ? null : tier.name)}
-                        >
-                          {open ? 'Hide what’s included' : 'What’s included'}
-                        </button>
-                        <button className="go" onClick={() => selectTier(tier)}>
-                          {appliedTier === tier.name
-                            ? `${tier.name} applied · edit below`
-                            : tier.composed
-                              ? `Use ${tier.name}`
-                              : `Select ${tier.name}`}
-                        </button>
-                      </div>
-                    );
-                  })}
-                  <div className="tierbox-f">
-                    {tiers[0]?.composed
-                      ? 'Choose one to start — everything stays editable.'
-                      : 'Built just now from live prices for your dates. Selecting one goes straight to checkout — everything stays editable there.'}
-                  </div>
+                  ))}
+                  <div className="tierbox-f">Selecting a tier goes straight to checkout.</div>
                 </>
               )}
             </div>
@@ -816,7 +553,7 @@ export default function PackageBuilder() {
                 <div className="sthead">
                   <h1>Choose your hotel{cityIn(entry.toCity)}</h1>
                   <span className="cnt">
-                    {legHotels.hotels.length} options for your dates
+                    {entry.pkg.hotels.length} options for your dates
                   </span>
                 </div>
                 {entry.isFirst ? (
@@ -888,14 +625,16 @@ export default function PackageBuilder() {
                     the name and the three ways to pay across the bottom. The
                     chosen hotel opens the live "Choose your room" grid inside
                     its own card. */}
-                {/* No banner. The hotel list is already filtered to what this
-                    traveller can actually be sold, and a customer does not need
-                    to be told which supplier contracts what, or why a property
-                    they never saw is missing. The visa consequence — the one
-                    thing that affects them — is stated on the visa step. */}
-
                 <div role="radiogroup" aria-label="Hotel">
-                  {legHotels.hotels.map((item, i) => (
+                  {entry.pkg.hotels.map((item, i) => {
+                    // A rate is per room per night, so a card's stay figure is
+                    // the rooms this party needs of that hotel's default room —
+                    // otherwise a family of four compares two hotels on a price
+                    // neither of them could actually book.
+                    const cardRooms = roomsFor(party, findRoom(item));
+                    const stay = tidy(item.nightly * entry.nights * cardRooms);
+                    const stayApart = tidy(item.nightlySeparate * entry.nights * cardRooms);
+                    return (
                     <HotelCard
                       key={item.id}
                       hotel={item}
@@ -903,26 +642,28 @@ export default function PackageBuilder() {
                       // Every hotel is quoted at its own default room, so the
                       // cards stay comparable with each other; the package
                       // carries the chosen room's cost.
-                      stayPrice={item.nightly * entry.nights}
+                      stayPrice={stay}
                       plate={(i % 5) + 1}
                       selected={item.id === hotel.id}
                       onSelect={() => selectHotel(item.id)}
                       priceNote={
                         item.eligible === false
                           ? 'Not in the bundle'
-                          : `${naira(item.nightlySeparate * entry.nights)} booked separately · free cancellation until ${formatShort(addDays(entry.startDate, -entry.pkg.freeCancelDays))}`
+                          : `${cardRooms > 1 ? `${cardRooms} rooms · ` : ''}${naira(stayApart)} booked separately · free cancellation until ${formatShort(addDays(entry.startDate, -entry.pkg.freeCancelDays))}`
                       }
                     >
                       {item.id === hotel.id && (
                         <RoomGrid
                           hotel={item}
                           nights={entry.nights}
+                          party={party}
                           selectedRoomId={room.id}
                           onSelect={(roomId) => patchSel(entry.id, { roomId })}
                         />
                       )}
                     </HotelCard>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="snav">
@@ -1072,23 +813,12 @@ export default function PackageBuilder() {
                   <button className="backb" onClick={() => goStep(previous)}>
                     ← {backLabel}
                   </button>
-                  {/* A removal that costs nothing to understand: the button
-                      says what it saves, so the cheaper option is not hidden
-                      behind the word "skip". */}
                   {entry.pkg.transfer && sel.includeTransfer && (
                     <button
                       className="skipb"
                       onClick={() => patchSel(entry.id, { includeTransfer: false })}
                     >
-                      Remove transfer — save {naira(entry.pkg.transfer.price)}
-                    </button>
-                  )}
-                  {entry.pkg.transfer && !sel.includeTransfer && (
-                    <button
-                      className="skipb"
-                      onClick={() => patchSel(entry.id, { includeTransfer: true })}
-                    >
-                      Add transfer back — {naira(entry.pkg.transfer.price)}
+                      Skip transfer
                     </button>
                   )}
                   <button className="nextb" onClick={() => goStep(following)}>
@@ -1106,16 +836,6 @@ export default function PackageBuilder() {
                 <p className="stnote">
                   Add as many as you like — each one adds to your bundle discount. All pre-selected
                   by default. Toggle any off.
-                </p>
-
-                {/* Said here, where the tour is chosen, and not only in the
-                    refund box four steps later. A customer who learns this at
-                    checkout learns it too late to have decided differently. */}
-                <p className="stwarn">
-                  ⚠ {TOURS_NONREFUNDABLE}{' '}
-                  {legRule
-                    ? 'That holds even if your visa is refused — the operator confirms tours after payment.'
-                    : ''}
                 </p>
 
                 {sel.includeTours ? (
@@ -1174,15 +894,7 @@ export default function PackageBuilder() {
                       className="skipb"
                       onClick={() => patchSel(entry.id, { includeTours: false })}
                     >
-                      Remove all tours — save {naira(tourTotal)}
-                    </button>
-                  )}
-                  {!sel.includeTours && (
-                    <button
-                      className="skipb"
-                      onClick={() => patchSel(entry.id, { includeTours: true })}
-                    >
-                      Add tours back — {naira(tourTotal)}
+                      Skip all tours
                     </button>
                   )}
                   <button className="nextb" onClick={() => goStep(following)}>
@@ -1228,8 +940,6 @@ export default function PackageBuilder() {
                     {visas.map((leg) => {
                       const addon = visaAddon(leg.pkg);
                       const on = selFor(leg).addons.includes('visa');
-                      const rule = fulfilmentRule(leg.pkg, search.nationality);
-                      const status = documentStatus(rule, uploadedFor(leg.id));
 
                       if (!addon) {
                         // The destination requires a visa the catalogue does not
@@ -1252,172 +962,6 @@ export default function PackageBuilder() {
                               {leg.toCity} visa skipped — you confirmed you hold a valid visa
                             </p>
                             <button onClick={() => setVisaOn(leg, true)}>Add visa back</button>
-                          </div>
-                        );
-                      }
-
-                      /* A routed destination. The application is filed through a
-                         partner rather than by Wakanow directly, and the
-                         documents are collected here — before payment — so the
-                         Holidays team receives a complete submission and can
-                         execute it rather than chase it. */
-                      if (rule) {
-                        return (
-                          <div className="visacard" key={leg.id}>
-                            <h3>
-                              🛂 {addon.title}
-                              {isMultiDestination ? ` · ${leg.toCity}` : ''}
-                            </h3>
-                            <div className="visabanner">
-                              <b>
-                                Required for {search.nationality} passports entering {leg.country}.
-                              </b>{' '}
-                              {rule.customerSummary} {APPLICATION_LANGUAGE}
-                            </div>
-
-                            <div className="visarow">
-                              <div className="body">
-                                <h3 style={{ fontSize: '13px' }}>{addon.title}</h3>
-                                {/* addon.meta already ends with the lead time,
-                                    so this adds what the lead time is measured
-                                    from rather than printing it twice. */}
-                                <div className="meta">
-                                  {addon.meta}, from a complete submission
-                                </div>
-                              </div>
-                              <div className="price">
-                                <div className="amt">{naira(addon.price)}</div>
-                                <div className="ref">{naira(addon.separate)} separately</div>
-                              </div>
-                              <button
-                                className="tgl on"
-                                role="switch"
-                                aria-checked="true"
-                                aria-label={`${addon.title} for ${leg.toCity}`}
-                                onClick={() => openVisaModal(leg)}
-                              />
-                            </div>
-
-                            <div className="docs">
-                              <div className="docs-h">
-                                <h4>Documents for {leg.toCity}</h4>
-                                <span className={status.complete ? 'docs-n done' : 'docs-n'}>
-                                  {status.done} of {status.total} ready
-                                </span>
-                              </div>
-                              <p className="docs-why">
-                                Uploaded before you pay, so your application can go in as soon
-                                as your payment clears.
-                              </p>
-
-                              {/* One picker for the lot. The rows below stay —
-                                  they are how a traveller sees WHAT is still
-                                  missing — but nobody has to click four
-                                  buttons to send four files they already have
-                                  in one folder. */}
-                              {!status.complete && (
-                                <label className="docs-all">
-                                  <input
-                                    type="file"
-                                    multiple
-                                    accept="image/*,application/pdf"
-                                    onChange={(event) => {
-                                      uploadAllDocuments(leg, rule, event.target.files);
-                                      event.target.value = '';
-                                    }}
-                                  />
-                                  <span className="docs-all-ic" aria-hidden="true">
-                                    ⇪
-                                  </span>
-                                  <span className="docs-all-b">
-                                    <b>
-                                      Upload all {status.total - status.done} at once
-                                    </b>
-                                    <span>
-                                      Pick them together —{' '}
-                                      {outstandingDocuments(rule, uploadedFor(leg.id))
-                                        .map((doc) => doc.label.toLowerCase())
-                                        .join(', ')}
-.
-                                    </span>
-                                  </span>
-                                </label>
-                              )}
-
-                              {lastUpload[leg.id] && (
-                                <p className="docs-took">
-                                  Took {lastUpload[leg.id].count} file
-                                  {lastUpload[leg.id].count > 1 ? 's' : ''} ·{' '}
-                                  {lastUpload[leg.id].matched.join(', ')}
-                                </p>
-                              )}
-
-                              {rule.documents.map((doc) => {
-                                const done = Boolean(uploadedFor(leg.id)[doc.id]);
-                                return (
-                                  <div className={done ? 'doc done' : 'doc'} key={doc.id}>
-                                    <span className="doc-tick" aria-hidden="true">
-                                      {done ? '✓' : ''}
-                                    </span>
-                                    <div className="doc-b">
-                                      <h5>{doc.label}</h5>
-                                      <div className="doc-m">{doc.note}</div>
-                                    </div>
-                                    <button
-                                      className={done ? 'doc-btn done' : 'doc-btn'}
-                                      onClick={() => toggleDocument(leg.id, doc.id)}
-                                    >
-                                      {done ? 'Uploaded · replace' : 'Upload'}
-                                    </button>
-                                  </div>
-                                );
-                              })}
-
-                              {/* Later is a real answer. Stated here, next to
-                                  the thing being deferred, rather than only as
-                                  an escape hatch on a blocked button. */}
-                              {!status.complete && (
-                                <div className="docs-later">
-                                  <button
-                                    type="button"
-                                    className="docs-later-b"
-                                    onClick={() =>
-                                      deferDocuments(leg.id, !deferredDocuments[leg.id])
-                                    }
-                                  >
-                                    {deferredDocuments[leg.id]
-                                      ? 'Actually, upload them now'
-                                      : 'I’ll upload these later'}
-                                  </button>
-                                  <span>
-                                    {deferredDocuments[leg.id]
-                                      ? `Due ${DOCUMENT_DEADLINE}. ${DEFERRED_LANGUAGE}`
-                                      : `Sending them now is faster. If you don’t have them to hand, they are due ${DOCUMENT_DEADLINE}.`}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Component by component, because they do not
-                                behave alike and a single sentence would be
-                                false for three of the five. */}
-                            <div className="refundbox">
-                              <h4>⚠ If {leg.country} refuses your application</h4>
-                              <ul>
-                                {REFUSAL_REFUND.map((row) => (
-                                  <li key={row.id}>
-                                    <span className="rb-c">{row.component}</span>
-                                    <span className="rb-r">{row.rule}</span>
-                                    <span className="rb-w">
-                                      {row.condition}
-                                      {row.id === 'tours' && rule.toursRefundableException
-                                        ? `, ${rule.toursRefundableException}`
-                                        : ''}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
                           </div>
                         );
                       }
@@ -1459,69 +1003,13 @@ export default function PackageBuilder() {
                   </>
                 )}
 
-                {docsOutstanding.length > 0 && (
-                  <div className="docgate">
-                    <b>
-                      Documents outstanding for{' '}
-                      {docsOutstanding.map(({ leg }) => leg.toCity).join(' and ')}
-                    </b>
-                    <p>
-                      {docsOutstanding.length === 1
-                        ? 'Upload them now and your application goes in as soon as your payment clears.'
-                        : 'Upload them now and your applications go in as soon as your payment clears.'}
-                    </p>
-                    {/* The way past this box without the documents. It exists
-                        because the alternative is a traveller who cannot
-                        continue, and a booking that ends here. */}
-                    <button
-                      type="button"
-                      className="docgate-later"
-                      onClick={() => {
-                        for (const { leg } of docsOutstanding) deferDocuments(leg.id, true);
-                      }}
-                    >
-                      I’ll upload{' '}
-                      {docsOutstanding.length === 1 ? 'them' : 'these'} later — continue
-                    </button>
-                  </div>
-                )}
-
-                {/* Deferred, and said out loud. Not a warning: the traveller
-                    picked this, so the box states the deadline and what the
-                    choice actually changes. */}
-                {docsOutstanding.length === 0 && docsDeferred.length > 0 && (
-                  <div className="docdue">
-                    <b>
-                      Documents for {docsDeferred.map(({ leg }) => leg.toCity).join(' and ')} are
-                      due {DOCUMENT_DEADLINE}
-                    </b>
-                    <p>
-                      You can carry on and pay. {DEFERRED_LANGUAGE} We’ll send you a link to
-                      upload{' '}
-                      {docsDeferred
-                        .flatMap(({ leg, rule }) =>
-                          outstandingDocuments(rule, uploadedFor(leg.id)).map((doc) =>
-                            doc.label.toLowerCase(),
-                          ),
-                        )
-                        .filter((label, i, all) => all.indexOf(label) === i)
-                        .join(', ')}
-                      .
-                    </p>
-                  </div>
-                )}
-
                 <div className="snav">
                   <button className="backb" onClick={() => goStep(previous)}>
                     ← {backLabel}
                   </button>
                   <button
                     className="nextb"
-                    style={{
-                      background: docsOutstanding.length ? 'var(--bdr2)' : 'var(--brand-500)',
-                      cursor: docsOutstanding.length ? 'not-allowed' : 'pointer',
-                    }}
-                    disabled={docsOutstanding.length > 0}
+                    style={{ background: 'var(--brand-500)' }}
                     onClick={checkout}
                   >
                     Proceed to checkout →
@@ -1534,21 +1022,9 @@ export default function PackageBuilder() {
           <aside className="rside">
             <div className="totbox">
               <div className="totbox-h">
-                {isMultiDestination
-                  ? routeLabel
-                  : appliedTier
-                    ? 'Your customised trip'
-                    : 'Your trip'}{' '}
-                <small>
-                  {payingTravellers} traveller{payingTravellers === 1 ? '' : 's'} ·{' '}
-                  {party.rooms} room{party.rooms === 1 ? '' : 's'}
-                </small>
+                {isMultiDestination ? routeLabel : 'Your package'}{' '}
+                <small>{partyLabel}</small>
               </div>
-              {/* Names the tier the build started from, so choosing one never
-                  looks like it replaced the trip on screen. */}
-              {appliedTier && !isMultiDestination && (
-                <div className="totbox-from">Started from {appliedTier} · edited since</div>
-              )}
               <div className="totbox-b">
                 {priced.legPrices.map((leg) => (
                   <Fragment key={leg.entry.id}>
@@ -1561,7 +1037,10 @@ export default function PackageBuilder() {
                     )}
                     {totalLines(leg.entry, leg).map((row) => (
                       <div className={row.off ? 'tl off' : 'tl'} key={row.key}>
-                        <span>{row.label}</span>
+                        <span>
+                          {row.label}
+                          {row.qty && <em className="wk-qty">{row.qty}</em>}
+                        </span>
                         <b>{naira(row.amount)}</b>
                       </div>
                     ))}
@@ -1569,25 +1048,33 @@ export default function PackageBuilder() {
                 ))}
                 {priced.home && (
                   <div className="tl">
-                    <span>{priced.home.label}</span>
+                    <span>
+                      {priced.home.label}
+                      <em className="wk-qty">{unitLabel('person', fareUnits(priced.party))}</em>
+                    </span>
                     <b>{naira(priced.home.bundled)}</b>
                   </div>
                 )}
                 <div className="tsv">
                   {priced.eligible
-                    ? `You save ${naira(priced.save)} vs booking separately`
-                    : 'This combination does not qualify for a package discount'}
+                    ? `You save ${naira(priced.partySave)} vs booking separately`
+                    : 'No bundle price on this combination'}
                 </div>
-                {/* The unit, stated. The headline used to say "Total /person"
-                    over a figure that was the whole package, next to tier cards
-                    quoted per person — two units, one panel, no way to tell. */}
+                {/* Two figures, because they answer two questions. The headline
+                    is the comparable one every package quotes — one adult's
+                    share with two sharing a room. The total is what this party
+                    actually pays, and only matches the headline doubled when
+                    the party IS two adults in one room. */}
                 <div className="tg">
-                  <span>
-                    Total for {party.travellers} traveller{party.travellers === 1 ? '' : 's'}
-                  </span>
+                  <span>Total for {partyLabel}</span>
                   <b>{naira(total)}</b>
                 </div>
-                <div className="tpp">{naira(perPerson)} per person</div>
+                <div className="pssl wk-basis">
+                  {naira(priced.bundled)} per adult sharing —{' '}
+                  {isSharingBasis
+                    ? 'the basis your party is booking on'
+                    : `your party needs ${rooms} room${rooms === 1 ? '' : 's'}`}
+                </div>
                 <div className="pssl">
                   Or <b>{naira(Math.round(total / 6))}/month</b> × 6 with PSS
                 </div>

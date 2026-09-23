@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import DateRangePicker from '../components/DateRangePicker.jsx';
-import { CATALOGUE, FEATURED, VISA_LABEL } from '../data/packages.js';
+import { FEATURED, VISA_LABEL } from '../data/packages.js';
 import { addDays, formatRange } from '../lib/dates.js';
 import { naira, nairaShort } from '../lib/format.js';
 import { cardPrice } from '../lib/pricing.js';
@@ -82,19 +82,7 @@ function TabIcon({ d }) {
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { search, setSearch, setDates, dateLabel, nights, travellerLabel, itinerary, setLegSlug } =
-    useTrip();
-
-  /* The destination the search bar names is the first leg of the trip, so
-     "Going to" edits that leg rather than writing to `search` directly —
-     `setLegSlug` already carries the city, code and country back into the
-     search fields every other screen reads. Cities already on a later leg are
-     left out so a two-city trip cannot be set to Doha → Doha. */
-  const firstLeg = itinerary[0];
-  const laterLegSlugs = new Set(itinerary.slice(1).map((leg) => leg.slug));
-  const destinationOptions = CATALOGUE.filter(
-    (pkg) => pkg.slug === firstLeg?.slug || !laterLegSlugs.has(pkg.slug),
-  );
+  const { search, setSearch, setDates, dateLabel, nights, travellerLabel } = useTrip();
 
   const [paxOpen, setPaxOpen] = useState(false);
   const [destChip, setDestChip] = useState('All');
@@ -246,41 +234,16 @@ export default function LandingPage() {
             </div>
 
             <div className="fields">
-              {/* Departure is fixed in Phase 1: every fare in the catalogue is
-                  priced from Lagos, so an origin picker that changed the label
-                  and left the price alone would be lying in the one place a
-                  traveller checks first. It is marked as fixed rather than
-                  rendered as a control that does nothing. */}
-              <div className="field fieldfix" aria-disabled="true">
+              <button className="field">
                 <span className="lab">From</span>
                 <span className="val">{`${search.fromCity} (${search.fromCode})`}</span>
-                <span className="hint">Departing from {search.fromCity}</span>
-              </div>
-
-              {/* Going to is the whole search. It was markup — a button with no
-                  handler — while the only live destination control sat in the
-                  leg row underneath, which is why Doha and Singapore were
-                  effectively unreachable from the search bar. Native select,
-                  laid over the field, so it opens on the first tap on a phone
-                  as well as a desktop. */}
-              <label className="field fieldsel">
+                <span className="hint">{search.fromName}</span>
+              </button>
+              <button className="field">
                 <span className="lab">Going to</span>
                 <span className="val">{`${search.toCity} (${search.toCode})`}</span>
                 <span className="hint">{search.toName}</span>
-                <span className="fieldsel-cv" aria-hidden="true">▾</span>
-                <select
-                  className="fieldsel-in"
-                  aria-label="Going to"
-                  value={firstLeg?.slug ?? ''}
-                  onChange={(event) => setLegSlug(firstLeg.id, event.target.value)}
-                >
-                  {destinationOptions.map((pkg) => (
-                    <option key={pkg.slug} value={pkg.slug}>
-                      {pkg.city} ({pkg.code}) · {pkg.country}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              </button>
               {/* `.field` has flex:1, but the picker's own anchor div becomes the
                   flex item in its place, so the flex grow is passed to the anchor. */}
               <DateRangePicker
@@ -306,7 +269,7 @@ export default function LandingPage() {
                 <span className="val">{travellerLabel()}</span>
                 <span className="hint">{`${search.nationality} passport`}</span>
               </button>
-              <button className="searchgo" onClick={() => navigate('/builder')}>
+              <button className="searchgo" onClick={() => navigate('/results')}>
                 Search
               </button>
             </div>
@@ -444,14 +407,14 @@ export default function LandingPage() {
                       <div className="was">{`${naira(was)} separately`}</div>
                       <div className="nowrow">
                         <span className="now">{naira(now)}</span>
-                        <span className="pp">/person</span>
+                        <span className="pp">/adult sharing</span>
                       </div>
                       <div className="save">{`You save ${naira(save)}`}</div>
                     </div>
                     <button className="cta" onClick={() => navigate(route)}>
                       Start with this trip
                     </button>
-                    <div className="ctahint">Hotel and flight already chosen</div>
+                    <div className="ctahint">Opens builder with parts pre-filled</div>
                   </div>
                 </article>
               );
@@ -501,7 +464,7 @@ export default function LandingPage() {
 
       <footer>
         <div className="wrap">
-          Wakanow Packages · Prices are illustrative
+          Wakanow Packages · Phase 1 wireframe · Prices are illustrative
         </div>
       </footer>
     </div>
