@@ -17,7 +17,8 @@
 import { findPackage } from '../data/packages.js';
 import { buildFares } from '../data/variants.js';
 import { addDays, nightsBetween } from './dates.js';
-import { PER_TRAVELLER, UNIT_PARTY, pricePackage } from './pricing.js';
+import { pricePackage } from './pricing.js';
+import { fareUnits, partyFrom } from './party.js';
 
 const tidy = (value) => Math.round(value / 100) * 100;
 
@@ -104,25 +105,17 @@ export function flightsForLeg(entry) {
 }
 
 /** The flight home from the final destination. Only exists on a multi-city trip. */
-export function homewardFlight(itinerary, { fromCity, fromCode }, party = UNIT_PARTY) {
+export function homewardFlight(itinerary, { fromCity, fromCode }) {
   if (itinerary.length < 2) return null;
   const last = itinerary[itinerary.length - 1];
   const base = last.pkg.flights[0];
-  // A seat home is bought per traveller, like every other seat on the trip.
-  const seats = Math.max(1, party.travellers ?? 1);
-  const unitBundled = tidy(base.price * ONE_WAY);
-  const unitSeparate = tidy(base.separate * ONE_WAY);
   return {
     key: 'home',
     label: `Return to ${fromCity}`,
     route: `${last.toCity} (${last.toCode}) → ${fromCity} (${fromCode})`,
     airline: base.name.split(' · ')[0],
-    basis: PER_TRAVELLER,
-    qty: seats,
-    unitBundled,
-    unitSeparate,
-    bundled: unitBundled * seats,
-    separate: unitSeparate * seats,
+    bundled: tidy(base.price * ONE_WAY),
+    separate: tidy(base.separate * ONE_WAY),
   };
 }
 
@@ -132,7 +125,10 @@ export function homewardFlight(itinerary, { fromCity, fromCode }, party = UNIT_P
  * `selections` is keyed by leg id, each holding that leg's flight/fare/hotel/room
  * ids, which optional components are on, and its enabled add-ons.
  */
-export function priceItinerary(itinerary, selections = {}, origin, party = UNIT_PARTY) {
+export function priceItinerary(itinerary, selections = {}, origin) {
+  // `origin` is the search object, so it already carries who is travelling.
+  const party = partyFrom(origin);
+
   const legPrices = itinerary.map((entry) => {
     const chosen = selections[entry.id] ?? {};
     const options = flightsForLeg(entry);
@@ -156,23 +152,35 @@ export function priceItinerary(itinerary, selections = {}, origin, party = UNIT_
     return { entry, priced, flightOptions: options };
   });
 
-  const home = homewardFlight(itinerary, origin, party);
+  const home = homewardFlight(itinerary, origin);
 
+  // Per adult sharing — the comparable headline, same basis as a package card.
   const bundled = legPrices.reduce((sum, l) => sum + l.priced.bundled, 0) + (home?.bundled ?? 0);
   const separate = legPrices.reduce((sum, l) => sum + l.priced.separate, 0) + (home?.separate ?? 0);
   const eligible = legPrices.every((l) => l.priced.eligible);
 
+  // What this party pays. The journey home is a flight, so it scales by fare
+  // units — children at their share, infants at theirs — not by head count.
+  const fares = fareUnits(party);
+  const homeParty = home
+    ? { ...home, partyBundled: tidy(home.bundled * fares), partySeparate: tidy(home.separate * fares) }
+    : null;
+  const partyBundled =
+    legPrices.reduce((sum, l) => sum + l.priced.partyBundled, 0) + (homeParty?.partyBundled ?? 0);
+  const partySeparate =
+    legPrices.reduce((sum, l) => sum + l.priced.partySeparate, 0) + (homeParty?.partySeparate ?? 0);
+
   return {
     legPrices,
-    home,
+    home: homeParty,
     party,
     bundled,
     separate,
     eligible,
-    /* One saving, derived here, reused everywhere. Screens must not compute
-       their own — that is how the builder and checkout came to disagree. */
     save: eligible ? separate - bundled : 0,
-    perPerson: Math.round(bundled / Math.max(1, party.travellers ?? 1)),
+    partyBundled,
+    partySeparate,
+    partySave: eligible ? partySeparate - partyBundled : 0,
     totalNights: itinerary.reduce((sum, e) => sum + e.nights, 0),
     startDate: itinerary[0]?.startDate,
     endDate: itinerary[itinerary.length - 1]?.endDate,
