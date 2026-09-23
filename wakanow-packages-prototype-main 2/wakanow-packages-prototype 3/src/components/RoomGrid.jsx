@@ -3,6 +3,7 @@ import { useState } from 'react';
 import './RoomGrid.css';
 import { naira } from '../lib/format.js';
 import { bedFilters, bedLabel, hotelPaySmallSmall, roomsForBed } from '../lib/hotels.js';
+import { SHARING_BASIS, roomsFor, tidy } from '../lib/party.js';
 
 /**
  * "Choose your room", from wakanow.com/hotels/<id>, rebuilt.
@@ -43,7 +44,17 @@ function PersonIcon() {
   );
 }
 
-export default function RoomGrid({ hotel, nights, selectedRoomId, onSelect }) {
+/**
+ * A room rate is per room per night, and a party needs as many rooms as its
+ * seated travellers will not fit into one of. So every card prices the STAY —
+ * rate × nights × the rooms this party needs of that type — rather than
+ * implying one room covers everyone. A family of four looking at a double sees
+ * two rooms here, which is the honest answer and the one checkout will charge.
+ */
+export default function RoomGrid({ hotel, nights, party, selectedRoomId, onSelect }) {
+  // Without a party the grid still has to price something, so it falls back to
+  // the basis every card in the prototype quotes: two adults in one room.
+  const who = party ?? SHARING_BASIS;
   const rooms = hotel.rooms ?? [];
   const filters = bedFilters(rooms);
   const [bedId, setBedId] = useState('all');
@@ -90,7 +101,8 @@ export default function RoomGrid({ hotel, nights, selectedRoomId, onSelect }) {
       <div className="wk-rg-grid" role="radiogroup" aria-label="Room type">
         {shown.map((room, i) => {
           const on = room.id === selectedRoomId;
-          const stay = room.nightly * nights;
+          const rooms = roomsFor(who, room);
+          const stay = tidy(room.nightly * nights * rooms);
           const pss = hotelPaySmallSmall(stay);
 
           return (
@@ -125,18 +137,20 @@ export default function RoomGrid({ hotel, nights, selectedRoomId, onSelect }) {
                   <span className="wk-rg-rmeta">
                     <PersonIcon /> Sleeps {room.sleeps} · {room.board}
                     {room.refundable ? ' · ✓ Refundable' : ''}
+                    {rooms > 1 && ` · ${rooms} rooms for your party`}
                   </span>
                   <b className="wk-rg-rprice">
                     {naira(stay)}
                     <i>
                       {nights} night{nights === 1 ? '' : 's'}
+                      {rooms > 1 ? ` × ${rooms} rooms` : ''}
                     </i>
                   </b>
                 </label>
 
                 <div className="wk-rg-price">
                   <b>{naira(room.nightly)}</b>
-                  <span>/ night · incl. taxes</span>
+                  <span>/ night per room · incl. taxes</span>
                 </div>
 
                 <span className="wk-rg-pss">
