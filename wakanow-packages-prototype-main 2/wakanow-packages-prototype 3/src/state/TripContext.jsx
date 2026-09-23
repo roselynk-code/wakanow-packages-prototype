@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { TripContext } from './useTrip.js';
 import { findPackage } from '../data/packages.js';
 import { addDays, formatRange, formatRangeWithYear, nightsBetween } from '../lib/dates.js';
+import { isSharingBasis, partyFrom, partyLabel } from '../lib/party.js';
 import { buildItinerary, newLegId, routeLabel } from '../lib/itinerary.js';
 
 /**
@@ -44,60 +45,6 @@ export function TripProvider({ children }) {
   const [legs, setLegs] = useState([FIRST_LEG]);
   const [tier, setTier] = useState('Premium');
   const [bookingSlug, setBookingSlug] = useState('tier-premium');
-
-  /* ── Visa documents ───────────────────────────────────────────────────────
-     Collected in the builder, spent at checkout. They live here rather than in
-     the builder's own state because checkout makes a claim about them — "your
-     documents are already with us" — and a screen that asserts something it
-     cannot see is how a prototype starts lying to the person reading it.
-
-     `documents` is keyed `legId:documentId`. `deferred` is keyed by leg and
-     records a deliberate "I'll send these later", which is a different thing
-     from not having got round to it: it is the traveller choosing the second
-     sequence, and it is what unblocks the step. */
-  const [documents, setDocuments] = useState({});
-  const [deferred, setDeferred] = useState({});
-
-  /** Mark a set of `legId:documentId` keys as received, in one go. */
-  const markDocuments = useCallback((keys) => {
-    if (!keys?.length) return;
-    setDocuments((prev) => {
-      const next = { ...prev };
-      for (const key of keys) next[key] = true;
-      return next;
-    });
-  }, []);
-
-  const toggleDocument = useCallback((legId, docId) => {
-    setDocuments((prev) => ({ ...prev, [`${legId}:${docId}`]: !prev[`${legId}:${docId}`] }));
-  }, []);
-
-  /** Every document held for one destination, as `{ documentId: true }`. */
-  const documentsFor = useCallback(
-    (legId) =>
-      Object.fromEntries(
-        Object.entries(documents)
-          .filter(([key]) => key.startsWith(`${legId}:`))
-          .map(([key, value]) => [key.split(':')[1], value]),
-      ),
-    [documents],
-  );
-
-  const deferDocuments = useCallback((legId, on) => {
-    setDeferred((prev) => ({ ...prev, [legId]: on }));
-  }, []);
-
-  /* ── The booking handed from the builder to checkout ──────────────────────
-     The itinerary the customer actually built, priced once, stored whole.
-
-     Checkout used to re-derive a price of its own by snapping the build to the
-     nearest authored tier and multiplying by head count, which is why the two
-     screens quoted different numbers for the same trip. It now reads this and
-     only this. If it is null, nobody has been through the builder and checkout
-     says so rather than inventing a trip. */
-  const [booking, setBookingState] = useState(null);
-  const confirmBooking = useCallback((snapshot) => setBookingState(snapshot), []);
-  const clearBooking = useCallback(() => setBookingState(null), []);
 
   const setSearch = useCallback((patch) => {
     setSearchState((prev) => {
@@ -174,6 +121,7 @@ export function TripProvider({ children }) {
     // The first leg's length always mirrors the search dates.
     const effectiveLegs = legs.map((leg, i) => (i === 0 ? { ...leg, nights } : leg));
     const itinerary = buildItinerary(effectiveLegs, search);
+    const party = partyFrom(search);
 
     const travellerLabel = () => {
       const parts = [`${search.adults} adult${search.adults > 1 ? 's' : ''}`];
@@ -213,33 +161,17 @@ export function TripProvider({ children }) {
       dateLabelWithYear: formatRangeWithYear(search.departDate, search.returnDate),
       travellerLabel,
       travellerSummary,
+      // Kept for the traveller forms, which need one per seated person. It is
+      // NOT a pricing multiplier any more: a room is per room and a transfer
+      // is per vehicle, so pricing goes through `party`. See src/lib/party.js.
       payingTravellers: search.adults + search.children,
-
-      documents,
-      documentsFor,
-      markDocuments,
-      toggleDocument,
-      deferredDocuments: deferred,
-      deferDocuments,
-
-      /* The party every price is quoted for. One object, so no screen has to
-         decide for itself whether a number is per person or for everyone. */
-      party: {
-        travellers: search.adults + search.children,
-        rooms: search.rooms,
-        adults: search.adults,
-        children: search.children,
-        infants: search.infants,
-      },
-
-      booking,
-      confirmBooking,
-      clearBooking,
+      party,
+      partyLabel: partyLabel(party),
+      isSharingBasis: isSharingBasis(party),
     };
   }, [
-    search, legs, tier, bookingSlug, documents, deferred, booking,
+    search, legs, tier, bookingSlug,
     setSearch, setDates, setTripLength, addLeg, removeLeg, setLegSlug, setLegNights,
-    documentsFor, markDocuments, toggleDocument, deferDocuments, confirmBooking, clearBooking,
   ]);
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
